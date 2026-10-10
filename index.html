@@ -71,7 +71,7 @@ button.primary{background:var(--chalk);border-color:var(--chalk);color:var(--pan
 .viewer.max{position:fixed;inset:0;z-index:50;height:auto;min-height:0;border-radius:0;border:0}
 .viewer.max .view-tools{top:calc(10px + env(safe-area-inset-top,0px));left:calc(10px + env(safe-area-inset-left,0px));right:calc(10px + env(safe-area-inset-right,0px))}
 .viewer.max .pick{bottom:calc(10px + env(safe-area-inset-bottom,0px))}
-body.maxed .mbar{display:none}
+body.maxed .mbar{display: none}
 /* blueprint panel inside the viewer: right side on wide screens, bottom on phones */
 .blueprint{--bpw:min(400px,44%);position:absolute;top:0;right:0;bottom:0;width:var(--bpw);background:var(--panel);border-left:1px solid var(--line);overflow:auto;-webkit-overflow-scrolling:touch;padding:12px 14px 16px;display:none;gap:10px;align-content:start}
 .viewer.bp .blueprint{display:grid}
@@ -155,6 +155,13 @@ tfoot td{font-weight:600;border-bottom:0}
 .cover b{font-family:var(--f-mono);font-weight:500;font-size:1.05rem}
 .foot{color:var(--muted);font-size:12px;max-width:80ch}
 .mbar{display:none}
+.printrow{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:end}
+.printrow label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:500}
+.printrow select{font:500 14px var(--f-body);color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:7px 8px;min-height:36px}
+.printrow .inbox{width:120px}
+.printrow button{min-height:36px}
+.pinfo{font-size:13px;color:var(--ink);max-width:80ch}
+.pinfo b{font-family:var(--f-mono);font-weight:500;color:var(--chalk)}
 
 @media (max-width:900px){
   .piece-body{grid-template-columns:minmax(0,1fr)}
@@ -244,6 +251,20 @@ tfoot td{font-weight:600;border-bottom:0}
       </div>
       <div class="tablewrap"><table id="cutlist"></table></div>
       <p class="foot">Lengths are net, end to end, in millimetres. Add joint allowances (tenons) and about 50 mm per piece for trimming when you buy timber.</p>
+    </section>
+
+    <section class="card" id="printCard">
+      <div class="card-head"><h2>3D print</h2><p>An STL file of this roof at model scale.</p></div>
+      <div class="printrow">
+        <label for="pScale">Scale
+          <select id="pScale"><option value="10">1:10</option><option value="20" selected>1:20</option><option value="25">1:25</option><option value="50">1:50</option></select></label>
+        <label for="pMode">Layout
+          <select id="pMode"><option value="kit" selected>Kit, every piece laid flat</option><option value="model">Assembled model</option></select></label>
+        <label for="pBed">Bed width
+          <span class="inbox"><input id="pBed" type="number" inputmode="decimal" value="220"><span>mm</span></span></label>
+        <button type="button" class="primary" id="pGo">Download STL</button>
+      </div>
+      <p class="pinfo" id="pInfo"></p>
     </section>
 
     <section class="card">
@@ -394,6 +415,140 @@ function warnings(g,p){
   if (p.W < 2500) w.push(['info','The clear width is '+f0(p.W)+' mm, and the braces narrow it near the posts. Fine for a seating or entrance shelter, tight for a car.']);
   return w;
 }
+
+/* ---------- 3D print (STL). Pure functions: no page or library needed ---------- */
+function area2(pts){ let a = 0; for (let i=0;i<pts.length;i++){ const [x1,y1]=pts[i], [x2,y2]=pts[(i+1)%pts.length]; a += x1*y2 - x2*y1; } return a/2; }
+function cleanPoly(pts){
+  const out = [];
+  pts.forEach(q => { const l = out[out.length-1]; if (!l || Math.hypot(q[0]-l[0], q[1]-l[1]) > 1e-6) out.push(q); });
+  while (out.length > 1 && Math.hypot(out[0][0]-out[out.length-1][0], out[0][1]-out[out.length-1][1]) < 1e-6) out.pop();
+  let changed = true;
+  while (changed && out.length > 3) {
+    changed = false;
+    for (let i=0;i<out.length;i++) {
+      const a = out[(i-1+out.length)%out.length], b = out[i], c = out[(i+1)%out.length];
+      if (Math.abs((b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0])) < 1e-6) { out.splice(i,1); changed = true; break; }
+    }
+  }
+  return out;
+}
+// ear clipping for a simple counter-clockwise polygon
+function triangulate(pts){
+  const idx = pts.map((_,i)=>i), tris = [];
+  const cross = (a,b,c) => (b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0]);
+  const inside = (q,a,b,c) => cross(a,b,q) > 1e-9 && cross(b,c,q) > 1e-9 && cross(c,a,q) > 1e-9;
+  let guard = 0;
+  while (idx.length > 3 && guard++ < 2000) {
+    let found = false;
+    for (let i=0;i<idx.length;i++) {
+      const ia = idx[(i-1+idx.length)%idx.length], ib = idx[i], ic = idx[(i+1)%idx.length];
+      const a = pts[ia], b = pts[ib], c = pts[ic];
+      if (cross(a,b,c) <= 1e-9) continue;
+      if (idx.some(j => j!==ia && j!==ib && j!==ic && inside(pts[j],a,b,c))) continue;
+      tris.push([ia,ib,ic]); idx.splice(i,1); found = true; break;
+    }
+    if (!found) break;
+  }
+  if (idx.length === 3) tris.push([idx[0],idx[1],idx[2]]);
+  return tris;
+}
+// a flat profile pushed out to thickness t; map must be a rotation plus offset so faces stay outward
+function prism(pts2, t, map, out){
+  let pts = cleanPoly(pts2);
+  if (area2(pts) < 0) pts = pts.slice().reverse();
+  const P = (q,z) => map([q[0], q[1], z]);
+  triangulate(pts).forEach(([a,b,c]) => {
+    out.push([P(pts[a],t), P(pts[b],t), P(pts[c],t)]);
+    out.push([P(pts[a],0), P(pts[c],0), P(pts[b],0)]);
+  });
+  for (let i=0;i<pts.length;i++) {
+    const a = pts[i], b = pts[(i+1)%pts.length];
+    out.push([P(a,0), P(b,0), P(b,t)], [P(a,0), P(b,t), P(a,t)]);
+  }
+}
+const rectP = (x0,y0,x1,y1) => [[x0,y0],[x1,y0],[x1,y1],[x0,y1]];
+// side profiles of each piece (mm), as in the cut drawings
+function printProfiles(g,p){
+  const b = p.b, bh = p.bh, d = bh/2, T = p.W + 2*b, Lt = g.Lt, Og = p.Og;
+  const plate = [[0,0],[Lt,0],[Lt,bh],[Lt-Og,bh],[Lt-Og,bh-d],[Lt-Og-b,bh-d],[Lt-Og-b,bh],[Og+b,bh],[Og+b,bh-d],[Og,bh-d],[Og,bh],[0,bh]];
+  const tie = [[0,d],[b,d],[b,0],[T-b,0],[T-b,d],[T,d],[T,bh],[0,bh]];
+  const brace = g.bk > 0 ? [[0,-p.bDrop],[g.bc,0],[g.bc*g.bk,0],[0,-p.bDrop*g.bk]] : null;
+  return {plate, tie, brace, T};
+}
+function printKit(g,p,scale,bedW){
+  const k = 1/scale, gap = 3, pr = printProfiles(g,p), L = [];
+  const add = (name,n,t,pts) => { if (n > 0) L.push({name,n,t,pts}); };
+  add('post',4,p.b,rectP(0,0,p.H+p.embed,p.b));
+  add('eaves beam',2,p.b,pr.plate);
+  add('cross beam',2,p.b,pr.tie);
+  if (g.kp > 0) add('ridge post',2,p.b,rectP(0,0,g.kp,p.b));
+  add('ridge beam',1,p.ridgeW,rectP(0,0,g.Lt,p.ridgeH));
+  const s = Math.sin(g.a), c = Math.cos(g.a);
+  const rp = g.prof.map(([x,y]) => [x*c - y*s, x*s + y*c]);          // rafter laid along its top edge
+  const nF = g.raf.filter(r=>r.f).length*2, nC = g.raf.filter(r=>!r.f).length*2;
+  if (p.rtf === p.rt) add('rafter',nF+nC,p.rt,rp); else { add('rafter over post',nF,p.rtf,rp); add('rafter',nC,p.rt,rp); }
+  if (pr.brace) {
+    const th = Math.atan2(p.bDrop, g.bc), cs = Math.cos(-th), sn = Math.sin(-th);
+    add('brace',(p.braceT?4:0)+(p.braceL?4:0),p.bt,pr.brace.map(([x,y]) => [x*cs - (y+p.bDrop)*sn, x*sn + (y+p.bDrop)*cs]));
+  }
+  L.forEach(o => {
+    const mx = Math.min(...o.pts.map(q=>q[0])), my = Math.min(...o.pts.map(q=>q[1]));
+    o.pts = o.pts.map(([x,y]) => [x-mx, y-my]);
+    o.w = Math.max(...o.pts.map(q=>q[0])); o.h = Math.max(...o.pts.map(q=>q[1]));
+  });
+  const items = []; L.forEach(o => { for (let i=0;i<o.n;i++) items.push(o); });
+  items.sort((m,n) => n.w - m.w);
+  const tris = []; let x = 0, y = 0, row = 0, maxX = 0, maxT = 0;
+  items.forEach(o => {
+    const w = o.w*k, h = o.h*k;
+    if (x > 0 && x + w > bedW) { x = 0; y += row + gap; row = 0; }
+    const ox = x, oy = y;
+    prism(o.pts, o.t, ([u,v,z]) => [ox + u*k, oy + v*k, z*k], tris);
+    x += w + gap; row = Math.max(row, h); maxX = Math.max(maxX, x - gap); maxT = Math.max(maxT, o.t*k);
+  });
+  return {tris, size:[maxX, y + row, maxT], pieces:items.length, list:L.map(o => o.n+' x '+o.name)};
+}
+function printModel(g,p,scale){
+  const k = 1/scale, tris = [], pr = printProfiles(g,p);
+  const b = p.b, H = p.H, px = p.W/2 + b/2, fz = g.frameZ;
+  const out = f => q => { const [x,y,z] = f(q); return [x*k, -z*k, y*k]; };   // y-up world to z-up print
+  const shift = (ox,oy,oz) => out(([x,y,z]) => [x+ox, y+oy, z+oz]);
+  const along = (ox,oy) => out(([u,v,w]) => [ox - w, v + oy, u]);               // profile in (z,y), thickness along x
+  [-1,1].forEach(sx => [-1,1].forEach(sz => prism(rectP(sx*px-b/2,0,sx*px+b/2,H), b, shift(0,0,sz*fz-b/2), tris)));
+  [-1,1].forEach(sx => prism(pr.plate.map(([u,v]) => [u - g.Lt/2, v]), b, along(sx*px + b/2, H), tris));
+  [-1,1].forEach(sz => prism(pr.tie, b, shift(-pr.T/2, H, sz*fz - b/2), tris));
+  if (g.kp > 0) [-1,1].forEach(sz => prism(rectP(-b/2,g.z0,b/2,g.z0+g.kp), b, shift(0,0,sz*fz-b/2), tris));
+  prism(rectP(-g.Lt/2, g.zR - p.ridgeH, g.Lt/2, g.zR), p.ridgeW, along(p.ridgeW/2, 0), tris);
+  g.raf.forEach(r => { const w = r.f ? p.rtf : p.rt;
+    [-1,1].forEach(sx => prism(g.prof.map(([x,y]) => [sx*x, y]), w, shift(0,0,r.z - w/2), tris)); });
+  if (g.bk > 0) {
+    const a = p.bDrop, c = g.bc, kk = g.bk;
+    if (p.braceT) [-1,1].forEach(sx => [-1,1].forEach(sz => { const x0 = sx*p.W/2, d = -sx;
+      prism([[x0,H-a],[x0+d*c,H],[x0+d*c*kk,H],[x0,H-a*kk]], p.bt, shift(0,0,sz*fz - p.bt/2), tris); }));
+    if (p.braceL) [-1,1].forEach(sx => [-1,1].forEach(sz => { const z0 = sz*p.Lc/2, d = -sz;
+      prism([[z0,H-a],[z0+d*c,H],[z0+d*c*kk,H],[z0,H-a*kk]], p.bt, along(sx*px + p.bt/2, 0), tris); }));
+  }
+  // sit it on the bed at the origin
+  let mn = [1e9,1e9,1e9], mx = [-1e9,-1e9,-1e9];
+  tris.forEach(t => t.forEach(v => { for (let i=0;i<3;i++){ mn[i]=Math.min(mn[i],v[i]); mx[i]=Math.max(mx[i],v[i]); } }));
+  tris.forEach(t => t.forEach(v => { for (let i=0;i<3;i++) v[i] -= mn[i]; }));
+  return {tris, size:[mx[0]-mn[0], mx[1]-mn[1], mx[2]-mn[2]], pieces:null};
+}
+function stlBinary(tris, name){
+  const buf = new ArrayBuffer(84 + tris.length*50), dv = new DataView(buf);
+  const head = ('Gable Roof Cutter ' + name).slice(0,79);
+  for (let i=0;i<head.length;i++) dv.setUint8(i, head.charCodeAt(i) & 127);
+  dv.setUint32(80, tris.length, true);
+  let o = 84;
+  tris.forEach(([a,b,c]) => {
+    const ux=b[0]-a[0], uy=b[1]-a[1], uz=b[2]-a[2], vx=c[0]-a[0], vy=c[1]-a[1], vz=c[2]-a[2];
+    let nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx; const l = Math.hypot(nx,ny,nz) || 1;
+    [nx/l,ny/l,nz/l].concat(a,b,c).forEach(v => { dv.setFloat32(o, v, true); o += 4; });
+    dv.setUint16(o, 0, true); o += 2;
+  });
+  return buf;
+}
+function thinnest(g,p){ return Math.min(p.b,p.bh,p.rt,p.rd,p.rtf,p.ridgeW,p.ridgeH,p.bt,p.be); }
 
 /* ---------- inputs ---------- */
 function buildRail(){
@@ -922,12 +1077,36 @@ function select(part, mesh){
   renderBlue();
 }
 
+function printInfo(){
+  if (!G) return null;
+  const scale = +$('pScale').value, mode = $('pMode').value, bed = Math.max(60, parseFloat($('pBed').value) || 220);
+  const res = mode === 'kit' ? printKit(G, PP, scale, bed) : printModel(G, PP, scale);
+  const sz = res.size.map(v => Math.round(v)).join(' × ');
+  const thin = thinnest(G, PP)/scale;
+  let t = mode === 'kit'
+    ? '<b>'+res.pieces+'</b> pieces on a <b>'+sz+'</b> mm plate. Each piece lies on its side, so the notches and angle cuts print exactly and need no supports. Glue them together like the real frame.'
+    : 'The model is <b>'+sz+'</b> mm. The roof overhangs, so print it with supports.';
+  t += ' Thinnest piece: <b>'+f1(thin)+'</b> mm'+(thin < 1.2 ? ', too thin for most printers. Use a larger scale.' : '.');
+  $('pInfo').innerHTML = t;
+  return {res, scale, mode};
+}
+function downloadStl(){
+  const r = printInfo(); if (!r) return;
+  const name = 'gable-roof-'+(r.mode === 'kit' ? 'kit' : 'model')+'-1to'+r.scale+'.stl';
+  const blob = new Blob([stlBinary(r.res.tris, name)], {type:'model/stl'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
 /* ---------- wiring ---------- */
 let t3 = 0;
 function update(){
   const p = sane(P), g = compute(p);
   G = g; PP = p;
   render(g,p);
+  printInfo();
   clearTimeout(t3); t3 = setTimeout(() => { build3d(g,p); if (selected) select(selected); }, 40);
 }
 function resetAll(){ P = Object.assign({}, DEF); save(); buildRail(); firstFrame = true; update(); }
@@ -944,6 +1123,8 @@ $('copy').addEventListener('click', copyList);
 $('tRafters').addEventListener('click', e => { showRafters = !showRafters; e.currentTarget.setAttribute('aria-pressed', showRafters); visibility(); });
 $('tBraces').addEventListener('click', e => { showBraces = !showBraces; e.currentTarget.setAttribute('aria-pressed', showBraces); visibility(); });
 $('bpClose').addEventListener('click', () => select(null));
+$('pGo').addEventListener('click', downloadStl);
+['pScale','pMode','pBed'].forEach(id => $(id).addEventListener('input', printInfo));
 window.addEventListener('resize', () => renderBlue());
 $('tMax').addEventListener('click', () => setMax(!$('viewer').classList.contains('max')));
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('viewer').classList.contains('max')) setMax(false); });
