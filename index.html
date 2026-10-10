@@ -229,14 +229,14 @@ tfoot td{font-weight:600;border-bottom:0}
   .inbox input{font-size:16px;padding:9px 4px 9px 10px}
   .card{padding:14px}
   /* cut list as cards */
-  thead{display:none}
-  table,tbody,tfoot{display:block}
-  tbody tr,tfoot tr{display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:4px 12px;padding:10px 4px;border-bottom:1px solid var(--line);align-items:baseline}
-  td{border:0;padding:0}
-  td.name{grid-column:1/-1}
-  td.tot{display:none}
-  td.len{text-align:right;font-size:15px}
-  tfoot td:empty{display:none}
+  #cutlist thead{display:none}
+  #cutlist,#cutlist tbody,#cutlist tfoot{display:block}
+  #cutlist tbody tr,#cutlist tfoot tr{display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:4px 12px;padding:10px 4px;border-bottom:1px solid var(--line);align-items:baseline}
+  #cutlist td{border:0;padding:0}
+  #cutlist td.name{grid-column:1/-1}
+  #cutlist td.tot{display:none}
+  #cutlist td.len{text-align:right;font-size:15px}
+  #cutlist tfoot td:empty{display:none}
   .mbar{display:flex;gap:8px;position:fixed;left:0;right:0;bottom:0;z-index:30;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--panel);border-top:1px solid var(--line)}
   .mbar button{flex:1;min-height:44px;font-size:15px}
   .pick{font-size:12px}
