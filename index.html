@@ -1361,12 +1361,12 @@ async function makePdf(check){
     for (const [svgStr, cap] of v.draw) {
       const img = await svgToPng(svgStr, 2.5);
       const w = CW, h = CW*img.h/img.w;
-      image(img.url, w, h, 'PNG', 64);
+      image(img.url, w, h, 'PNG', 52);
       para(cap, 8, MUTED);
     }
     y += 2;
     heading('How to cut it', 12);
-    v.steps.forEach((t, i) => para((i+1)+'.  '+t, 10, INK, 0));
+    v.steps.forEach((t, i) => para((i+1)+'.  '+t, 9.5, INK, 0));
   }
 
   // covering
