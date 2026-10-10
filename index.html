@@ -581,7 +581,7 @@ function cornerAngle(V,A,B){
   return {a1, d, deg: Math.abs(d)*180/Math.PI};
 }
 const fA = v => (Math.round(v*10)/10).toString();
-function angleMark(V,A,B,r,lab){
+function angleMark(V,A,B,r,lab,C){
   const {a1, d, deg} = cornerAngle(V,A,B), a2 = a1 + d, u1 = [Math.cos(a1),Math.sin(a1)], u2 = [Math.cos(a2),Math.sin(a2)];
   let h;
   if (Math.abs(deg-90) < 0.05) {
@@ -590,8 +590,11 @@ function angleMark(V,A,B,r,lab){
   } else {
     h = '<path class="ang" d="M'+(V[0]+r*u1[0]).toFixed(1)+' '+(V[1]+r*u1[1]).toFixed(1)+' A'+r+' '+r+' 0 0 '+(d > 0 ? 1 : 0)+' '+(V[0]+r*u2[0]).toFixed(1)+' '+(V[1]+r*u2[1]).toFixed(1)+'"/>';
   }
-  const mid = a1 + d/2, L = (lab || r + 13);
-  return h + '<text class="angt" x="'+(V[0]+L*Math.cos(mid)).toFixed(1)+'" y="'+(V[1]+L*Math.sin(mid)+4).toFixed(1)+'" text-anchor="middle">'+fA(deg)+'°</text>';
+  const L = (lab || r + 13);
+  // label along the bisector, or pushed out from C (the middle of a small notch) so labels don't pile up
+  let ux = Math.cos(a1 + d/2), uy = Math.sin(a1 + d/2);
+  if (C) { const vx = V[0]-C[0], vy = V[1]-C[1], n = Math.hypot(vx,vy) || 1; ux = vx/n; uy = vy/n; }
+  return h + '<text class="angt" x="'+(V[0]+L*ux).toFixed(1)+'" y="'+(V[1]+L*uy+4).toFixed(1)+'" text-anchor="middle">'+fA(deg)+'°</text>';
 }
 const svg = (W,H,inner,label) => '<svg viewBox="0 0 '+W.toFixed(0)+' '+H.toFixed(0)+'" role="img" aria-label="'+label+'">'+inner+'</svg>';
 // rotate a set of points about an origin, then flip y for SVG
@@ -656,7 +659,7 @@ function rafterSVGs(g,p,W){
   const full = svg(W, yb+22, a, 'Whole rafter with measurements');
 
   // birdsmouth close up
-  const wmm = Math.max(p.rd*3.4, 400), s2 = (W-2*PAD)/wmm, top2 = 44, cx = pts[4][0];
+  const wmm = Math.max((g.seat + p.hb)*3.2, p.rd*1.8, 200), s2 = (W-2*PAD)/wmm, top2 = 44, cx = pts[4][0];
   const M2 = ([x,y]) => [W/2 + (x-cx)*s2, top2 + (y-minY)*s2];
   const r = pts.map(M2), t7 = M2(ht);
   let d = '<polygon class="wood" points="'+poly(r)+'"/>';
@@ -665,14 +668,15 @@ function rafterSVGs(g,p,W){
   const mid = (A,B) => [(A[0]+B[0])/2,(A[1]+B[1])/2];
   const mH = mid(t7, r[4]), mHeel = mid(r[3], r[4]), mSeat = mid(r[4], r[5]);
   d += '<text class="c" x="'+(mH[0]+10)+'" y="'+(mH[1]+4)+'">'+f0(g.hap)+' down</text>';
-  d += '<text x="'+(mHeel[0]+10)+'" y="'+(mHeel[1]+18)+'">heel '+f0(p.hb)+'</text>';
-  d += '<text x="'+(mSeat[0]-8)+'" y="'+(mSeat[1]+30)+'" text-anchor="end">seat '+f0(g.seat)+'</text>';
-  d += angleMark(r[4], r[3], r[5], 12, 24) + angleMark(r[3], r[4], r[5], 16, 30) + angleMark(r[5], r[4], r[3], 16, 30);
+  d += '<text x="'+(mHeel[0]+14)+'" y="'+(mHeel[1]+4)+'">heel '+f0(p.hb)+'</text>';
+  d += '<text x="'+(mSeat[0]-14)+'" y="'+(mSeat[1]+4)+'" text-anchor="end">seat '+f0(g.seat)+'</text>';
+  const cB = [(r[3][0]+r[4][0]+r[5][0])/3, (r[3][1]+r[4][1]+r[5][1])/3];
+  d += angleMark(r[4], r[3], r[5], 14, 22, cB) + angleMark(r[3], r[4], r[5], 18, 26, cB) + angleMark(r[5], r[4], r[3], 18, 26, cB);
   const detail = svg(W, top2 + (maxY-minY)*s2 + 70, d, 'Birdsmouth close up');
   if (!(p.hr > 0)) return [full, detail, null];
 
   // ridge notch close up, ridge end at the left edge
-  const wr = Math.max(p.rd*3.2, 380), s3 = (W-2*PAD)/wr, top3 = 30;
+  const wr = Math.max(g.rHeel + (g.rSeat + p.hr)*2.4, p.rd*1.8, 200), s3 = (W-2*PAD)/wr, top3 = 30;
   const M3 = ([x,y]) => [PAD + 6 + (x-minX)*s3, top3 + (y-minY)*s3];
   const u = pts.map(M3), r7 = M3(rt);
   let e = '<polygon class="wood" points="'+poly(u)+'"/>';
@@ -680,13 +684,14 @@ function rafterSVGs(g,p,W){
   e += hdim(u[0][0], r7[0], 18, f0(g.rHeel), 'c');
   const mR = mid(r7, u[7]), mRh = mid(u[6], u[7]), mRs = mid(u[7], u[8]);
   e += '<text class="c" x="'+(mR[0]+10)+'" y="'+(mR[1]+4)+'">'+f0(g.rHap)+' down</text>';
-  e += '<text x="'+(mRh[0]+10)+'" y="'+(mRh[1]+20)+'">heel '+f0(p.hr)+'</text>';
-  e += '<text x="'+(mRs[0])+'" y="'+(mRs[1]+34)+'" text-anchor="middle">seat '+f0(g.rSeat)+'</text>';
+  e += '<text x="'+(mRh[0]+14)+'" y="'+(mRh[1]+4)+'">heel '+f0(p.hr)+'</text>';
+  e += '<text x="'+(mRs[0])+'" y="'+(mRs[1]+46)+'" text-anchor="middle">seat '+f0(g.rSeat)+'</text>';
   e += angleMark(u[0], u[1], u[u.length-1], 22, 36);
   // corners of the cut-out: the heel meets the bottom edge, the seat meets either the bottom edge or the ridge cut
   const along = (V,F) => [2*V[0]-F[0], 2*V[1]-F[1]];
-  e += angleMark(u[7], u[6], u[8], 12, 24) + angleMark(u[6], u[7], along(u[6], u[5]), 16, 30);
-  e += u.length > 9 ? angleMark(u[8], u[7], u[6], 16, 30) : angleMark(u[8], u[7], along(u[8], u[0]), 12, 24);
+  const cR = [(u[6][0]+u[7][0]+u[8][0])/3, (u[6][1]+u[7][1]+u[8][1])/3];
+  e += angleMark(u[7], u[6], u[8], 14, 22, cR) + angleMark(u[6], u[7], along(u[6], u[5]), 18, 26, cR);
+  e += u.length > 9 ? angleMark(u[8], u[7], u[6], 18, 26, cR) : angleMark(u[8], u[7], along(u[8], u[0]), 14, 24, cR);
   const ridgeD = svg(W, top3 + (maxY-minY)*s3 + 64, e, 'Ridge notch close up');
   return [full, detail, ridgeD];
 }
