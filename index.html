@@ -1284,7 +1284,10 @@ async function makePdf(check){
     lines.forEach(l => { room(sz*0.42); doc.text(l, M + (indent||0), y + sz*0.32); y += sz*0.42; });
     y += 1.2;
   };
-  const image = (url, w, h, fmt) => { room(h + 2); doc.addImage(url, fmt || 'PNG', M, y, w, h, undefined, 'FAST'); y += h + 2; };
+  const image = (url, w, h, fmt, maxH) => {
+    if (maxH && h > maxH) { w = w*maxH/h; h = maxH; }
+    room(h + 2); doc.addImage(url, fmt || 'PNG', M + (CW - w)/2, y, w, h, undefined, 'FAST'); y += h + 2;
+  };
   const rule = () => { doc.setDrawColor(205,211,205); doc.line(M, y, PW - M, y); y += 4; };
   const U = UL(), date = new Date().toISOString().slice(0,10);
 
@@ -1358,7 +1361,7 @@ async function makePdf(check){
     for (const [svgStr, cap] of v.draw) {
       const img = await svgToPng(svgStr, 2.5);
       const w = CW, h = CW*img.h/img.w;
-      image(img.url, w, h);
+      image(img.url, w, h, 'PNG', 64);
       para(cap, 8, MUTED);
     }
     y += 2;
