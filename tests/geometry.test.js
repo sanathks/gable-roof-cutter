@@ -328,3 +328,29 @@ test('tapping a size highlights a line in the model exactly that long, or an arc
     near(pv[1], g.zT(g.xo), 'pitch arc sits on the rafter top edge above the beam');
   }
 });
+
+test('rafter layout marks: edges, gaps and centres match the rafters in the model', () => {
+  for (const over of [{}, { maxSp: 500 }, { Og: 0 }, { rtf: 60 }, { Lc: 3600, rt: 75 }]) {
+    const { p, g } = setup(over), rows = R.rafterLayout(g, p);
+    assert.equal(rows.length, g.raf.length, 'one row per rafter position');
+    rows.forEach((r, i) => {
+      const raf = g.raf[i], w = raf.f ? p.rtf : p.rt;
+      near(r.right - r.left, w, 'edge marks are one rafter width apart');
+      near(r.centre, raf.z + g.Lt / 2, 'centre measured from the left end');
+      assert.ok(r.left >= -1e-9 && r.right <= g.Lt + 1e-9, 'marks stay on the beam');
+      if (r.gap != null) {
+        near(r.gap, rows[i + 1].left - r.right, 'gap is the clear space to the next rafter');
+        assert.ok(r.gap > 0, 'rafters do not overlap');
+        assert.ok(r.toNext <= p.maxSp + 1e-9, 'centres within the max spacing');
+      }
+      const mirror = rows[rows.length - 1 - i];
+      near(r.left, g.Lt - mirror.right, 'layout is the same from either end');
+    });
+    rows.filter(r => r.over).forEach(r => near(Math.min(Math.abs(r.centre - (g.Lt / 2 - g.frameZ)), Math.abs(r.centre - (g.Lt / 2 + g.frameZ))), 0, 'rafters over the posts are centred on the posts'));
+    // the drawing labels the same left-edge marks
+    const labels = [...R.layoutSVG(g, p, 700).matchAll(/class="c"[^>]*>([\d,.]+)</g)].map(m => +m[1].replace(/,/g, ''));
+    assert.deepEqual(labels, rows.map(r => Math.round(r.left)), 'plan view shows the left-edge marks');
+  }
+  const { p, g } = setup();
+  console.table(R.rafterLayout(g, p).map(r => ({ n: r.n, over: r.over, left: +r.left.toFixed(1), centre: +r.centre.toFixed(1), right: +r.right.toFixed(1), gap: r.gap == null ? null : +r.gap.toFixed(1) })));
+});

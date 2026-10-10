@@ -150,6 +150,17 @@ svg text.c{fill:var(--chalk)}
 svg text.m{fill:var(--muted)}
 svg .ang{fill:none;stroke:var(--warn);stroke-width:1.4}
 svg text.angt{fill:var(--warn);font-weight:600}
+svg .raf{fill:var(--chalk);fill-opacity:.55;stroke:var(--chalk);stroke-width:1}
+svg .raf.over{fill-opacity:.9}
+.laytable{width:100%;border-collapse:collapse;font-size:13px}
+.laytable th{font-family:var(--f-display);font-size:.9rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:right;padding:6px 8px;border-bottom:1px solid var(--line)}
+.laytable th:first-child,.laytable td:first-child,.laytable th:nth-child(2),.laytable td:nth-child(2){text-align:left}
+.laytable td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.laytable td.mk{color:var(--chalk);font-weight:600}
+.laytable tbody tr{cursor:pointer}
+.laytable tbody tr:hover,.laytable tbody tr.sel{background:var(--chalk-soft)}
+.laytable td:nth-child(2){font-family:var(--f-body)}
+@media (max-width:760px){.laytable .hide-sm{display:none}}
 svg .tri{fill:var(--warn-soft);fill-opacity:.45;stroke:var(--chalk);stroke-width:2}
 .tri-wrap{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px;align-items:start}
 .tri-wrap svg{width:100%;height:auto;display:block;background:var(--paper);border-radius:8px;border:1px solid var(--line)}
@@ -284,6 +295,13 @@ tfoot td{font-weight:600;border-bottom:0}
         <dl class="facts" id="triFacts"></dl>
       </div>
       <p class="role">Every rafter is the long side of a right-angled triangle. The <b>run</b> is the level distance from the outside of the eaves beam to the centre line, where the ridge post stands. The <b>rise</b> is how far the roof climbs over that run. The square corner sits on the centre line, so the rafter line is √(run² + rise²). The <b>pitch</b> is the angle at the eaves: rise ÷ run.</p>
+    </section>
+
+    <section class="card" id="layoutCard">
+      <div class="card-head"><h2>Rafter layout</h2><p>Where each rafter goes along the beams.</p></div>
+      <div class="drawings" id="layoutDraw"></div>
+      <p class="role">The eaves beams and the ridge beam are the same length and line up at the ends, so these marks are the same on all three. Measure every mark from the same end, mark both edges, and set each rafter between its two marks. Darker rafters sit over the posts. Tap a row to see that rafter in the model.</p>
+      <div class="tablewrap"><table class="laytable" id="layoutTable"></table></div>
     </section>
 
     <section class="card" id="pieceCard">
@@ -616,6 +634,36 @@ function annoFor(k, g, p){
     case 'braceT': case 'braceL': return {main:null, at:[O1[0], O1[1], bz], groups:['braces'], view:'iso'};
   }
   return null;
+}
+// where each rafter goes, measured from one end of the eaves beams and ridge beam (they line up)
+function rafterLayout(g,p){
+  const rows = g.raf.map((r, i) => {
+    const w = r.f ? p.rtf : p.rt, c = r.z + g.Lt/2;
+    return {i, n:i+1, over:r.f, w, left:c - w/2, centre:c, right:c + w/2};
+  });
+  rows.forEach((r, i) => { const nx = rows[i+1]; r.gap = nx ? nx.left - r.right : null; r.toNext = nx ? nx.centre - r.centre : null; });
+  return rows;
+}
+function layoutSVG(g,p,W){
+  const rows = rafterLayout(g,p), s = (W - 2*PAD)/g.Lt, X = x => PAD + x*s;
+  const top = 74, beam = 26, post = Math.max(p.b*s, 6);
+  let h = '<rect class="wood" x="'+X(0)+'" y="'+top+'" width="'+(g.Lt*s).toFixed(1)+'" height="'+beam+'"/>';
+  [g.Lt/2 - g.frameZ, g.Lt/2 + g.frameZ].forEach(c => h += '<rect class="ground" x="'+(X(c) - post/2).toFixed(1)+'" y="'+(top + beam + 4)+'" width="'+post.toFixed(1)+'" height="10"/>');
+  rows.forEach(r => {
+    h += '<rect class="raf'+(r.over ? ' over' : '')+'" x="'+X(r.left).toFixed(1)+'" y="'+(top - 8)+'" width="'+Math.max(r.w*s, 2).toFixed(1)+'" height="'+(beam + 16)+'"/>';
+    h += '<text class="c" transform="rotate(-90 '+(X(r.left) + 3).toFixed(1)+' '+(top - 12)+')" x="'+(X(r.left) + 3).toFixed(1)+'" y="'+(top - 12)+'">'+f0(r.left)+'</text>';
+    h += '<text class="m" x="'+X(r.centre).toFixed(1)+'" y="'+(top + beam/2 + 4)+'" text-anchor="middle" font-size="10">'+r.n+'</text>';
+  });
+  // the clear gaps between rafters, as a chain under the beam
+  const yc = top + beam + 34;
+  rows.forEach(r => { if (r.gap == null) return;
+    const a = X(r.right), b = X(r.right + r.gap);
+    h += '<line class="dim" x1="'+a.toFixed(1)+'" y1="'+yc+'" x2="'+b.toFixed(1)+'" y2="'+yc+'"/><line class="dim" x1="'+a.toFixed(1)+'" y1="'+(yc-4)+'" x2="'+a.toFixed(1)+'" y2="'+(yc+4)+'"/><line class="dim" x1="'+b.toFixed(1)+'" y1="'+(yc-4)+'" x2="'+b.toFixed(1)+'" y2="'+(yc+4)+'"/>';
+    h += '<text x="'+((a+b)/2).toFixed(1)+'" y="'+(yc + 15)+'" text-anchor="middle" font-size="10">'+f0(r.gap)+'</text>';
+  });
+  h += hdim(X(0), X(g.Lt), yc + 42, f0(g.Lt)+' '+UL());
+  h += '<text class="m" x="'+X(0)+'" y="'+(yc + 58)+'">left end</text>';
+  return svg(W, yc + 66, h, 'Rafter layout along the beams');
 }
 function triangleFacts(g,p){
   const run = g.xo, rise = g.zT(0) - g.zT(g.xo), line = Math.hypot(run, rise);
@@ -1036,6 +1084,7 @@ function render(g,p){
   renderBlue();
   markRelated();
   renderTriangle();
+  renderLayout();
 }
 
 function triangleFactsList(g,p){
@@ -1050,6 +1099,22 @@ function triangleFactsList(g,p){
   ];
 }
 let triW = 0;
+let layW = 0, laySel = null;
+function renderLayout(){
+  if (!G) return;
+  const W = Math.max(300, Math.min($('layoutDraw').clientWidth || 340, 900)); layW = W;
+  $('layoutDraw').innerHTML = '<figure>'+layoutSVG(G, PP, W)+'<figcaption>Seen from above. Numbers above the beam: distance from the left end to the left edge of each rafter. Under the beam: the clear gap between rafters.</figcaption></figure>';
+  const rows = rafterLayout(G, PP), u = UL();
+  $('layoutTable').innerHTML = '<thead><tr><th>#</th><th>Rafter</th><th>Left edge</th><th class="hide-sm">Centre</th><th>Right edge</th><th>Gap to next</th></tr></thead><tbody>' +
+    rows.map(r => '<tr data-i="'+r.i+'"'+(laySel === r.i ? ' class="sel"' : '')+' tabindex="0"><td>'+r.n+'</td><td>'+(r.over ? 'Over post' : 'Rafter')+' · '+f0(r.w)+'</td><td class="mk">'+f0(r.left)+'</td><td class="hide-sm">'+f0(r.centre)+'</td><td class="mk">'+f0(r.right)+'</td><td>'+(r.gap == null ? '–' : f0(r.gap))+'</td></tr>').join('') +
+    '</tbody><tfoot><tr><td colspan="6" style="text-align:left;font-family:var(--f-body);color:var(--muted);font-size:12px;border:0">All in '+u+', from the left end of the beam. Rafters '+rows.length+' along, two per position (one each side of the ridge).</td></tr></tfoot>';
+  $('layoutTable').querySelectorAll('tbody tr').forEach(tr => {
+    const go = () => focusRafter(+tr.dataset.i);
+    tr.addEventListener('click', go);
+    tr.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+  });
+}
+new ResizeObserver(() => { const w = $('layoutDraw').clientWidth; if (w && Math.abs(Math.min(w,900) - layW) > 8) renderLayout(); }).observe($('layoutDraw'));
 function renderTriangle(){
   if (!G) return;
   const W = Math.max(280, Math.min($('triDraw').clientWidth || 340, 640)); triW = W;
@@ -1262,8 +1327,8 @@ function build3d(g,p){
   const nx = Math.sin(g.a)*off, ny = Math.cos(g.a)*off;   // offset square to the roof slope
   g.raf.forEach(r => {
     const w = r.f ? p.rtf : p.rt, part = (r.f && !sameW) ? 'rafF' : 'rafC';
-    [-1,1].forEach(sx => ext(part, prof.map(([x,y]) => [sx*x, y]), w, [0,0,(r.z - w/2)*S], 0,
-      [[0+sx*nx, g.zT(0)+ny, r.z],[sx*(g.runX+nx), g.zT(g.runX)+ny, r.z]]));
+    [-1,1].forEach(sx => { const m = ext(part, prof.map(([x,y]) => [sx*x, y]), w, [0,0,(r.z - w/2)*S], 0,
+      [[0+sx*nx, g.zT(0)+ny, r.z],[sx*(g.runX+nx), g.zT(g.runX)+ny, r.z]]); m.userData.rafIndex = g.raf.indexOf(r); });
   });
 
   if (g.bk > 0) {
@@ -1314,10 +1379,11 @@ function applyFocus(){
   if (!model) return null;
   if (!GHOST) GHOST = new THREE.MeshStandardMaterial({color:0x9aa39f, transparent:true, opacity:0.1, depthWrite:false, roughness:1});
   let target = null;
-  model.children.forEach(o => { if (o.isMesh && o.userData.key === focusKey) target = o; });
+  const keys = focusKey ? focusKey.split('|') : [];
+  model.children.forEach(o => { if (o.isMesh && o.userData.key === keys[0]) target = o; });
   if (focusKey && !target) focusKey = null;
   const active = !!focusKey || focusGroups.size > 0;
-  const lit = o => focusKey ? o.userData.key === focusKey : focusGroups.has(groupOf(o.userData.part));
+  const lit = o => focusKey ? keys.includes(o.userData.key) : focusGroups.has(groupOf(o.userData.part));
   Object.values(FOCUSMAT).forEach(m => m.dispose()); FOCUSMAT = {};
   const litMat = part => {
     if (!FOCUSMAT[part]) { const m = MAT[part].clone(); m.emissive.set(css('--chalk')||'#1d5bd0'); m.emissiveIntensity = 0.35; FOCUSMAT[part] = m; }
@@ -1331,6 +1397,36 @@ function applyFocus(){
   $('tFocus').hidden = !active;
   return target;
 }
+// a row in the layout table: light that rafter pair and draw the mark distance along the eaves beam
+function focusRafter(i){
+  if (!model || !G) return;
+  const rows = rafterLayout(G, PP), r = rows[i]; if (!r) return;
+  laySel = i;
+  $('layoutTable').querySelectorAll('tbody tr').forEach(tr => tr.classList.toggle('sel', +tr.dataset.i === i));
+  const ms = model.children.filter(o => o.isMesh && o.userData.rafIndex === i);
+  if (!ms.length) return;
+  hiddenGroups.delete('rafters'); buildShowRow(); visibility();
+  annoKey = null; selected = null; focusGroups.clear();
+  focusKey = ms.map(m => m.userData.key).join('|');
+  applyFocus(); highlight(); renderPick(); renderBlue();
+  clearDim();
+  const x = PP.W/2 + PP.b + 60, y = PP.H + PP.bh + 40, z0 = -G.Lt/2, z1 = z0 + r.left;
+  const V3 = q => new THREE.Vector3(q[0]*S, q[1]*S, q[2]*S), mat = new THREE.MeshBasicMaterial({color:new THREE.Color(css('--chalk')||'#1d5bd0'), depthTest:false, transparent:true});
+  const rod = Math.max(G.Lt, 2*G.runX)*S*0.0028, up = new THREE.Vector3(0,1,0);
+  dimObj = new THREE.Group();
+  [[[x,y,z0],[x,y,z1]], [[x,y-90,z0],[x,y+90,z0]], [[x,y-90,z1],[x,y+90,z1]]].forEach(([A,B]) => {
+    const a = V3(A), b = V3(B), d = b.clone().sub(a), L = d.length(); if (L < 1e-6) return;
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(rod, rod, L, 8), mat);
+    m.position.copy(a).add(b).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(up, d.normalize()); m.renderOrder = 10; dimObj.add(m);
+  });
+  scene.add(dimObj);
+  dimMid = V3([x, y, (z0 + z1)/2]);
+  $('dimlabel').textContent = 'Rafter '+r.n+' · left edge at '+f0(r.left)+' '+UL()+' from the end';
+  $('dimlabel').hidden = false;
+  annoKey = '__layout';   // keeps the label lifted above its line
+  turnTo('side', V3([x, y, z0 + Math.max(r.left, 300)/2]), Math.max(r.left, 900)*S);
+  goTo('viewer');
+}
 function focusOn(mesh){
   focusKey = mesh.userData.key; focusGroups.clear(); buildShowRow();
   select(mesh.userData.part, mesh, true);
@@ -1340,7 +1436,7 @@ function focusOn(mesh){
   const d = c.clone().sub(controls.target);
   controls.target.add(d); camera.position.add(d); controls.update();
 }
-function exitFocus(){ annoKey = null; clearDim(); focusKey = null; focusGroups.clear(); applyFocus(); highlight(); buildShowRow(); renderPick(); }
+function exitFocus(){ annoKey = null; laySel = null; document.querySelectorAll('#layoutTable tbody tr').forEach(tr => tr.classList.remove('sel')); clearDim(); focusKey = null; focusGroups.clear(); applyFocus(); highlight(); buildShowRow(); renderPick(); }
 
 // dimension line drawn on the tapped piece, with the cut length as a floating label
 function clearDim(){
@@ -1497,7 +1593,7 @@ function downloadStl(){
 // drawings carry class names only, so the PDF gets its own fixed light colours
 const PRINT_CSS = '<style>.wood{fill:#e3ebfb;stroke:#1c2320;stroke-width:1.4}.ground{fill:#d5dad4}.dim{stroke:#59635e;stroke-width:1}'+
   '.mark{stroke:#1d5bd0;stroke-width:1.4;stroke-dasharray:4 3}text{fill:#1c2320;font-family:"Courier New",Courier,monospace;font-size:12px}'+
-  'text.c{fill:#1d5bd0}text.m{fill:#59635e}.tri{fill:#f8e9d6;fill-opacity:.55;stroke:#1d5bd0;stroke-width:2}text.n{font-family:Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;letter-spacing:.06em}.ang{fill:none;stroke:#b05a00;stroke-width:1.4}text.angt{fill:#b05a00;font-weight:700}</style>';
+  'text.c{fill:#1d5bd0}text.m{fill:#59635e}.raf{fill:#1d5bd0;fill-opacity:.55;stroke:#1d5bd0}.raf.over{fill-opacity:.9}.tri{fill:#f8e9d6;fill-opacity:.55;stroke:#1d5bd0;stroke-width:2}text.n{font-family:Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;letter-spacing:.06em}.ang{fill:none;stroke:#b05a00;stroke-width:1.4}text.angt{fill:#b05a00;font-weight:700}</style>';
 function svgToPng(str, k){
   return new Promise((res, rej) => {
     const m = str.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/), w = +m[1], h = +m[2];
@@ -1631,6 +1727,21 @@ async function makePdf(check){
   });
   y += 2;
   para('Lengths are net, end to end. Add joint allowances (tenons) and about '+f0(50)+' '+U+' per piece for trimming when you buy timber.', 8, MUTED);
+
+  // rafter layout marks
+  doc.addPage(); y = M;
+  heading('Rafter layout', 15);
+  para('The eaves beams and the ridge beam are the same length and line up at the ends, so these marks are the same on all three. Measure every mark from the same end, mark both edges, and set each rafter between its two marks.', 9.5, INK);
+  { const img = await svgToPng(layoutSVG(G, PP, 680), 2.5); image(img.url, CW, CW*img.h/img.w, 'PNG', 60); }
+  const lcols = [[M,'#'],[M+10,'Rafter'],[M+62,'Left edge '+U],[M+98,'Centre '+U],[M+130,'Right edge '+U],[M+164,'Gap to next']];
+  font('helvetica','bold',8); color(MUTED); lcols.forEach(([x,t]) => doc.text(t.toUpperCase(), x, y + 3)); y += 5; rule(); y -= 2;
+  rafterLayout(G, PP).forEach(r => {
+    room(6);
+    font('helvetica','normal',9); color(INK); doc.text(String(r.n), M, y + 3.5); doc.text((r.over ? 'Over post' : 'Rafter')+' · '+f0(r.w)+' '+U, M+10, y + 3.5);
+    font('courier','bold',10); color(CHALK); doc.text(f0(r.left), M+62, y + 3.5); doc.text(f0(r.right), M+130, y + 3.5);
+    font('courier','normal',10); color(INK); doc.text(f0(r.centre), M+98, y + 3.5); doc.text(r.gap == null ? '-' : f0(r.gap), M+164, y + 3.5);
+    y += 6; doc.setDrawColor(225,229,225); doc.line(M, y - 1, PW - M, y - 1);
+  });
 
   // one section per piece
   for (const r of LIST) {
