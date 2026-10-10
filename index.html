@@ -584,7 +584,7 @@ function annoFor(k, g, p){
     case 'pitch': {
       const V = [g.xo, g.zT(g.xo), gz], r = 450;
       return {main:null, segs:[[V, [g.xo - 750, V[1], gz]]], arc:{V, a0:Math.PI - a, a1:Math.PI, r},
-        at:[V[0] - (r+170)*Math.cos(a/2), V[1] + (r+170)*Math.sin(a/2), gz], groups:['rafters'], view:'front'};
+        at:[V[0] - (r+420)*Math.cos(a/2), V[1] - 260, gz], groups:['rafters'], view:'front'};
     }
     case 'Oe': return line([g.xo, g.zU(g.runX) - 80, gz], [g.runX, g.zU(g.runX) - 80, gz], ['rafters','plates'], 'front');
     case 'Og': return line([side, H + p.bh/2, p.Lc/2 + p.b], [side, H + p.bh/2, g.Lt/2], ['plates','posts'], 'side');
@@ -1215,7 +1215,7 @@ function applyTheme(){
   grid = new THREE.GridHelper(14, 28, gc, gc);
   grid.material.transparent = true; grid.material.opacity = 0.7;
   scene.add(grid);
-  if (dimObj) dimObj.material.color.set(css('--chalk')||'#1d5bd0');
+  if (dimObj) dimObj.traverse(o => { if (o.material && o.material.color) o.material.color.set(css('--chalk')||'#1d5bd0'); });
 }
 
 // every mesh carries the two ends (mm) of the measurement shown when it is tapped
@@ -1344,7 +1344,7 @@ function exitFocus(){ annoKey = null; clearDim(); focusKey = null; focusGroups.c
 
 // dimension line drawn on the tapped piece, with the cut length as a floating label
 function clearDim(){
-  if (dimObj) { scene.remove(dimObj); dimObj.geometry.dispose(); dimObj.material.dispose(); dimObj = null; }
+  if (dimObj) { scene.remove(dimObj); dimObj.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); dimObj = null; }
   dimMid = null; $('dimlabel').hidden = true;
 }
 function showDim(mesh){
@@ -1397,18 +1397,29 @@ function showAnno(k, move){
     }
   }
   if (pts.length) {
-    dimObj = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({color:new THREE.Color(css('--chalk')||'#1d5bd0'), depthTest:false, transparent:true}));
-    dimObj.renderOrder = 10; scene.add(dimObj);
+    const mat = new THREE.MeshBasicMaterial({color:new THREE.Color(css('--chalk')||'#1d5bd0'), depthTest:false, transparent:true});
+    const rod = Math.max(G.Lt, 2*G.runX)*S*0.0028, up = new THREE.Vector3(0,1,0);
+    dimObj = new THREE.Group(); dimObj.renderOrder = 10;
+    for (let i = 0; i < pts.length; i += 2) {
+      const A = pts[i], B = pts[i+1], d = B.clone().sub(A), L = d.length(); if (L < 1e-6) continue;
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(rod, rod, L, 8), mat);
+      m.position.copy(A).add(B).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(up, d.normalize()); m.renderOrder = 10;
+      dimObj.add(m);
+    }
+    scene.add(dimObj);
   }
   dimMid = V3(a.at);
   $('dimlabel').textContent = annoLabel(k); $('dimlabel').hidden = false;
-  if (move) turnTo(a.view, dimMid);
+  // how big the measurement is decides how close the camera comes
+  const ext = Math.max(a.main ? Math.hypot(a.main[0][0]-a.main[1][0], a.main[0][1]-a.main[1][1], a.main[0][2]-a.main[1][2]) : 0, a.arc ? a.arc.r*2.4 : 0, 400);
+  const focusAt = a.main ? V3([(a.main[0][0]+a.main[1][0])/2, (a.main[0][1]+a.main[1][1])/2, (a.main[0][2]+a.main[1][2])/2]) : a.arc ? V3(a.arc.V) : dimMid;
+  if (move) turnTo(a.view, focusAt, ext*S);
 }
 // glide the camera round to a view that shows the measurement, keeping roughly the same distance
-function turnTo(view, target){
+function turnTo(view, target, size){
   const dirs = {front:[0.35,0.3,1], side:[1,0.3,0.35], iso:[0.9,0.6,1]}, d = new THREE.Vector3(...(dirs[view] || dirs.iso)).normalize();
   const span = Math.max(G.Lt, 2*G.runX, G.ridgeTop)*S;
-  const dist = Math.min(Math.max(camera.position.distanceTo(controls.target), span*1.1), span*2.2);
+  const dist = size ? Math.min(Math.max(size*2.8, span*0.4), span*1.6) : Math.min(Math.max(camera.position.distanceTo(controls.target), span*1.1), span*2.2);
   const p0 = camera.position.clone(), t0 = controls.target.clone();
   const p1 = target.clone().add(d.multiplyScalar(dist)), t1 = target.clone();
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches, start = performance.now(), my = ++camAnim;
