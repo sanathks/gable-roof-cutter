@@ -72,6 +72,24 @@ button.primary{background:var(--chalk);border-color:var(--chalk);color:var(--pan
 .viewer.max .view-tools{top:calc(10px + env(safe-area-inset-top,0px));left:calc(10px + env(safe-area-inset-left,0px));right:calc(10px + env(safe-area-inset-right,0px))}
 .viewer.max .pick{bottom:calc(10px + env(safe-area-inset-bottom,0px))}
 body.maxed .mbar{display:none}
+/* blueprint panel inside the viewer: right side on wide screens, bottom on phones */
+.blueprint{--bpw:min(400px,44%);position:absolute;top:0;right:0;bottom:0;width:var(--bpw);background:var(--panel);border-left:1px solid var(--line);overflow:auto;-webkit-overflow-scrolling:touch;padding:12px 14px 16px;display:none;gap:10px;align-content:start}
+.viewer.bp .blueprint{display:grid}
+.viewer.bp #view3d{right:min(400px,44%)}
+.viewer.bp .view-tools{right:calc(min(400px,44%) + 10px)}
+.viewer.bp .pick{display:none}
+.bp-head{display:flex;gap:8px;align-items:flex-start;justify-content:space-between}
+.bp-head h3{font-family:var(--f-display);font-size:1.4rem;font-weight:600;margin:0;line-height:1.1}
+.bp-head p{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.bp-head .big{color:var(--chalk);font-size:1.1rem;font-weight:500}
+.bp-head button{flex:none;padding:4px 10px}
+.blueprint .drawings{gap:8px}
+.blueprint .steps{font-size:13px;gap:6px}
+@media (max-width:760px){
+  .blueprint{top:auto;left:0;width:auto;height:48%;border-left:0;border-top:1px solid var(--line);padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+  .viewer.bp #view3d{right:0;bottom:48%}
+  .viewer.bp .view-tools{right:10px}
+}
 .dimlabel{position:absolute;left:0;top:0;transform:translate(-50%,-50%);pointer-events:none;background:var(--chalk);color:var(--panel);font:600 13px var(--f-mono);padding:2px 7px;border-radius:4px;white-space:nowrap;font-variant-numeric:tabular-nums}
 .pick{position:absolute;left:10px;bottom:10px;right:10px;display:flex;flex-wrap:wrap;gap:2px 10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px 6px 12px;font-size:13px;max-width:max-content}
 .pick b{font-family:var(--f-display);font-size:1.05rem;font-weight:600}
@@ -199,6 +217,11 @@ tfoot td{font-weight:600;border-bottom:0}
         <button type="button" id="tMax" class="max-btn" aria-pressed="false">Full screen</button>
       </div>
       <div class="pick" id="pick"></div>
+      <aside class="blueprint" id="blueprint" aria-label="Blueprint of the selected piece">
+        <div class="bp-head"><div id="bpTitle"></div><button type="button" id="bpClose" aria-label="Close blueprint">Close</button></div>
+        <div class="drawings" id="bpDraw"></div>
+        <ol class="steps" id="bpSteps"></ol>
+      </aside>
     </div>
 
     <div class="stats" id="stats"></div>
@@ -636,6 +659,7 @@ function render(g,p){
   $('cover').innerHTML = cov.map(([k,v])=>'<div><span>'+k+'</span><b>'+v+'</b></div>').join('');
   renderPiece();
   renderPick();
+  renderBlue();
 }
 
 let lastW = 0;
@@ -661,12 +685,28 @@ function renderPick(){
     : '<span class="hint">Drag to turn, pinch to zoom. Tap a piece to measure it.</span>';
   const b = $('pickGo'); if (b) b.addEventListener('click', () => goTo('pieceCard'));
 }
+// the blueprint panel opens on wide screens, and on phones when the model is full screen
+let bpW = 0;
+function renderBlue(){
+  const v = $('viewer'), on = !!selected && !!G && (!isPhone() || v.classList.contains('max'));
+  v.classList.toggle('bp', on);
+  if (!on) return;
+  const r = LIST.find(x => x.id === selected); if (!r) return;
+  $('bpTitle').innerHTML = '<h3>'+PART[r.id].name+'</h3><p><span class="big">'+f0(r.len)+' mm</span> · '+r.qty+' × '+f0(r.w)+' × '+f0(r.h)+'</p>';
+  const W = Math.max(260, ($('bpDraw').clientWidth || 320));
+  bpW = W;
+  const pv = pieceView(selected, G, PP, W);
+  $('bpDraw').innerHTML = pv.draw.map(([s,cap]) => '<figure>'+s+'<figcaption>'+cap+'</figcaption></figure>').join('');
+  $('bpSteps').innerHTML = pv.steps.map(t => '<li>'+t+'</li>').join('');
+}
+new ResizeObserver(() => { const w = $('bpDraw').clientWidth; if (w && Math.abs(w - bpW) > 8) renderBlue(); }).observe($('blueprint'));
 function setMax(on){
   $('viewer').classList.toggle('max', on);
   document.body.classList.toggle('maxed', on);
   document.body.style.overflow = on ? 'hidden' : '';
   $('tMax').setAttribute('aria-pressed', on);
   $('tMax').textContent = on ? 'Exit full screen' : 'Full screen';
+  renderBlue();
 }
 function goTo(id){
   if ($('viewer').classList.contains('max')) setMax(false);
@@ -879,6 +919,7 @@ function select(part, mesh){
   document.querySelectorAll('#cutlist tbody tr').forEach(tr => tr.classList.toggle('sel', tr.dataset.part === part));
   renderPiece();
   renderPick();
+  renderBlue();
 }
 
 /* ---------- wiring ---------- */
@@ -902,6 +943,8 @@ $('mCuts').addEventListener('click', () => goTo('pieceCard'));
 $('copy').addEventListener('click', copyList);
 $('tRafters').addEventListener('click', e => { showRafters = !showRafters; e.currentTarget.setAttribute('aria-pressed', showRafters); visibility(); });
 $('tBraces').addEventListener('click', e => { showBraces = !showBraces; e.currentTarget.setAttribute('aria-pressed', showBraces); visibility(); });
+$('bpClose').addEventListener('click', () => select(null));
+window.addEventListener('resize', () => renderBlue());
 $('tMax').addEventListener('click', () => setMax(!$('viewer').classList.contains('max')));
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('viewer').classList.contains('max')) setMax(false); });
 $('tView').addEventListener('click', () => { if (G) fitView(G, PP); });
