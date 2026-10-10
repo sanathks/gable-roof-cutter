@@ -323,7 +323,7 @@ tfoot td{font-weight:600;border-bottom:0}
 (function(){
 const $ = id => document.getElementById(id);
 const DEF = {W:2080,Lc:2100,H:2600,b:120,bh:120,embed:0,pitch:40,Oe:450,Og:400,ridgeW:120,ridgeH:120,
-  rt:60,rd:120,rtf:120,maxSp:800,hb:48,hr:50,bAng:45,bDrop:435,be:120,bt:120,braceT:true,braceL:true,gauge:320};
+  rt:60,rd:120,rtf:120,maxSp:800,hb:48,ridgeNotch:true,hr:50,bAng:45,bDrop:435,be:120,bt:120,braceT:true,braceL:true,gauge:320};
 const GROUPS = [
   {t:'Frame', f:[
     ['W','Clear width between posts','mm','Inside face to inside face, across the roof.'],
@@ -344,7 +344,8 @@ const GROUPS = [
     ['rtf','Rafter width over posts','mm','Set equal to the rafter width if all rafters match.'],
     ['maxSp','Max rafter spacing','mm','Centre to centre. Rafters are spread evenly.'],
     ['hb','Birdsmouth depth','mm','Notch over the eaves beam, measured plumb.'],
-    ['hr','Ridge notch depth','mm','Notch over the ridge beam, measured plumb. 0 for none.']]},
+    ['ridgeNotch','Notch rafters over the ridge beam','check'],
+    ['hr','Ridge notch depth','mm','Notch over the ridge beam, measured plumb. Used when the notch is switched on.']]},
   {t:'Braces', f:[
     ['bAng','Brace angle','°','Measured from the post. 45° is usual.'],
     ['bDrop','Brace drop','mm','From the beam down the post to the brace long point.'],
@@ -371,15 +372,15 @@ const ROLE = {
   plates:'Eaves beam (wall plate). Runs along the post tops on each long side. The bottom of every rafter sits on it, notched over it with the birdsmouth.',
   ties:'Cross beam (tie beam). Joins the two sides across the post tops so the roof cannot spread apart, and carries the ridge post.',
   king:'Ridge post (king post). Stands on the middle of the cross beam and holds up the ridge beam.',
-  ridge:'Ridge beam (ridge purlin). Runs along the peak. The top of every rafter sits on it, notched over it with the ridge notch.',
+  ridge:'Ridge beam (ridge purlin). Runs along the peak. The top of every rafter sits on it.',
   rafF:'Rafter over a post. The sloping piece that carries the roof covering from the ridge down past the eaves. Same cuts as the other rafters.',
-  rafC:'Rafter. The sloping piece that carries the roof covering from the ridge down past the eaves: ridge cut at the top, ridge notch over the ridge beam, birdsmouth over the eaves beam, tail cut at the end.',
+  rafC:'Rafter. The sloping piece that carries the roof covering from the ridge down past the eaves: ridge cut at the top, birdsmouth over the eaves beam, tail cut at the end. With the ridge notch switched on it is also notched over the ridge beam.',
   braceT:'Knee brace, across. The short diagonal between a post and the cross beam. It stops the frame swaying sideways (racking).',
   braceL:'Knee brace, along. The short diagonal between a post and the eaves beam. It stops the frame swaying along its length (racking).'
 };
 const RELATED = {
   posts:['H','b','embed','bDrop'], plates:['Lc','b','bh','Og'], ties:['W','b','bh'], king:['b','bh','ridgeH','hr','pitch'],
-  ridge:['ridgeW','ridgeH','Lc','Og'], rafF:['pitch','Oe','rtf','rd','hb','hr'], rafC:['pitch','Oe','rt','rd','maxSp','hb','hr'],
+  ridge:['ridgeW','ridgeH','Lc','Og'], rafF:['pitch','Oe','rtf','rd','hb','ridgeNotch','hr'], rafC:['pitch','Oe','rt','rd','maxSp','hb','ridgeNotch','hr'],
   braceT:['bAng','bDrop','be','bt','braceT'], braceL:['bAng','bDrop','be','bt','braceL']
 };
 let P = Object.assign({}, DEF);
@@ -411,6 +412,7 @@ function sane(p){
   q.bAng = Math.min(75, Math.max(15, q.bAng));
   ['W','Lc','H','b','bh','ridgeW','ridgeH','rt','rd','rtf','be','bt','bDrop'].forEach(k => q[k] = Math.max(10, q[k]));
   ['embed','Oe','Og','hb','hr','gauge'].forEach(k => q[k] = Math.max(0, q[k]));
+  if (q.ridgeNotch === false) q.hr = 0;   // switched off: rafters sit straight on the ridge beam (the depth is kept for later)
   q.maxSp = Math.max(200, q.maxSp);
   return q;
 }
@@ -464,12 +466,12 @@ function parts(g,p){
   L.push({id:'plates',qty:2,w:p.b,h:p.bh,len:g.Lt,note:'Full length. Halving notch on top over each post, '+f0(p.Og)+' from each end.'});
   L.push({id:'ties',qty:2,w:p.b,h:p.bh,len:p.W+2*p.b,note:'Across the post tops. Halving notch underneath at each end.'});
   if (g.kp > 0) L.push({id:'king',qty:2,w:p.b,h:p.b,len:g.kp,note:'Shoulder to shoulder. Add tenons if you joint it into the beams.'});
-  L.push({id:'ridge',qty:1,w:p.ridgeW,h:p.ridgeH,len:g.Lt,note:'Full length. Rafters are notched down onto its top.'});
+  L.push({id:'ridge',qty:1,w:p.ridgeW,h:p.ridgeH,len:g.Lt,note:p.hr > 0 ? 'Full length. Rafters are notched down onto its top.' : 'Full length. Rafters sit on its top edges; fix each one with a screw or a rafter bracket.'});
   if (sameW) {
-    L.push({id:'rafC',qty:nF+nC,w:p.rt,h:p.rd,len:g.rafterLen,note:'All the same. Ridge plumb cut, ridge notch, birdsmouth, plumb tail cut.'});
+    L.push({id:'rafC',qty:nF+nC,w:p.rt,h:p.rd,len:g.rafterLen,note:'All the same. Ridge plumb cut, '+(p.hr > 0 ? 'ridge notch, ' : '')+'birdsmouth, plumb tail cut.'});
   } else {
     L.push({id:'rafF',qty:nF,w:p.rtf,h:p.rd,len:g.rafterLen,note:'Over the post frames. Same cuts as the other rafters.'});
-    L.push({id:'rafC',qty:nC,w:p.rt,h:p.rd,len:g.rafterLen,note:'Ridge plumb cut, ridge notch, birdsmouth, plumb tail cut.'});
+    L.push({id:'rafC',qty:nC,w:p.rt,h:p.rd,len:g.rafterLen,note:'Ridge plumb cut, '+(p.hr > 0 ? 'ridge notch, ' : '')+'birdsmouth, plumb tail cut.'});
   }
   const bnote = 'Long point to long point. Ends cut '+f1(90-p.bAng)+'° and '+f1(p.bAng)+'° off square.';
   if (p.braceT && g.bk > 0) L.push({id:'braceT',qty:4,w:p.bt,h:p.be,len:g.bL,note:bnote});
@@ -860,14 +862,15 @@ function pieceView(id, g, p, W){
           'Top: rafter centres. Bottom: ridge post centres.']],
         steps:['Cut to '+B(f0(g.Lt))+' '+UL()+'.',
           'Mark the rafter centres along the top: '+rafterX.map(x=>B(f0(x))).join(', ')+' '+UL()+' from the left end.',
-          'Mark the ridge post centres underneath at '+kingX.map(x=>B(f0(x))).join(' and ')+' '+UL()+'.']};
+          'Mark the ridge post centres underneath at '+kingX.map(x=>B(f0(x))).join(' and ')+' '+UL()+'.'].concat(p.hr > 0 ? [] :
+          ['No ridge notch: the rafters sit on the two top edges. Fix each one to the beam with a screw or a metal rafter bracket.'])};
     case 'rafF': case 'rafC': {
       const [full, detail, ridgeD] = rafterSVGs(g,p,W);
       const n = LIST.filter(r=>r.id==='rafF'||r.id==='rafC').reduce((s,r)=>s+r.qty,0);
       const draw = [[full,'Ridge end on the left. Measure along the top edge from the long point.']];
       if (ridgeD) draw.push([ridgeD,'Ridge notch. The seat sits flat on top of the ridge beam.']);
       draw.push([detail,'Birdsmouth. The notch sits on the outside top corner of the eaves beam.']);
-      const ridgeStep = p.hr > 0 ? ['Ridge notch: from the long point measure '+B(f0(g.rHeel))+' '+UL()+' along the top edge and draw a plumb line. Measure '+B(f0(g.rHap))+' '+UL()+' down it, then draw a line square to it towards the ridge end'+(g.rSeat < p.ridgeW/2 - 0.5 ? ' until it meets the bottom edge ('+B(f0(g.rSeat))+' '+UL()+')' : ' all the way to the ridge cut ('+B(f0(g.rSeat))+' '+UL()+')')+'. Cut out the piece.'] : [];
+      const ridgeStep = p.hr > 0 ? ['Ridge notch: from the long point measure '+B(f0(g.rHeel))+' '+UL()+' along the top edge and draw a plumb line. Measure '+B(f0(g.rHap))+' '+UL()+' down it, then draw a line square to it towards the ridge end'+(g.rSeat < p.ridgeW/2 - 0.5 ? ' until it meets the bottom edge ('+B(f0(g.rSeat))+' '+UL()+')' : ' all the way to the ridge cut ('+B(f0(g.rSeat))+' '+UL()+')')+'. Cut out the piece.'] : ['No ridge notch: the top of the rafter sits straight on the ridge beam. After the rafter is cut, fix it to the beam with a screw or a metal rafter bracket.'];
       return {draw,
         steps:['Framing square: '+B('12')+' on the blade, '+B(f1(12*g.tn))+' on the tongue ('+B(r0(1000*g.tn))+' rise per 1000 run). Mark along the tongue for plumb lines, along the blade for the seat.',
           'Mark the ridge plumb cut at '+B(f1(90-p.pitch)+'°')+' to the top edge (mitre saw at '+B(f1(p.pitch)+'°')+'). Cut it. Its top corner is the long point.',

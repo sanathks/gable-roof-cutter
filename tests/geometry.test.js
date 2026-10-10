@@ -260,3 +260,19 @@ test('eaves beam and cross beam halving notches lock together at every post', ()
     near(pr.T, p.W + 2 * p.b, 'cross beam runs over both eaves beams');
   }
 });
+
+test('switching the ridge notch off: no notch, rafters rest on the ridge beam, roof height unchanged', () => {
+  const on = setup(), off = setup({ ridgeNotch: false });
+  assert.equal(off.p.hr, 0, 'notch depth is zero when switched off');
+  assert.equal(off.g.prof.length, 7, 'rafter outline has no ridge notch corners');
+  near(off.g.ridgeTop, on.g.ridgeTop, 'roof height does not change');
+  near(off.g.zR, off.g.zU(off.p.ridgeW / 2), 'ridge beam top touches the rafter underside at its edges');
+  near(on.g.kp - off.g.kp, on.p.hr, 'ridge posts get shorter by the notch depth');
+  checkRafter(off.p, off.g); checkDrawnAngles(off.p, off.g);
+  assert.equal(R.rafterSVGs(off.g, off.p, 360)[2], null, 'no ridge notch close-up');
+  assert.ok(!R.parts(off.g, off.p).find(r => r.id === 'rafC').note.includes('ridge notch'), 'cut list does not mention a ridge notch');
+  assert.equal(R.sane(Object.assign({}, R.DEF, { ridgeNotch: false })).hr, 0);
+  assert.equal(R.sane(Object.assign({}, R.DEF, { ridgeNotch: true })).hr, R.DEF.hr, 'depth comes back when switched on');
+  const kit = R.printKit(off.g, off.p, 20, 220);
+  assert.equal(closedSolid(kit.tris), 0, 'kit without ridge notch is still closed');
+});
