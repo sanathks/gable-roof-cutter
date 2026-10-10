@@ -331,6 +331,8 @@ tfoot td{font-weight:600;border-bottom:0}
           <select id="pScale"><option value="10">1:10</option><option value="20" selected>1:20</option><option value="25">1:25</option><option value="50">1:50</option></select></label>
         <label for="pMode">Layout
           <select id="pMode"><option value="kit" selected>Kit, every piece laid flat</option><option value="model">Assembled model</option></select></label>
+        <label for="pRelief">Corner relief
+          <span class="inbox"><input id="pRelief" type="number" inputmode="decimal" step="0.1" value="0.5"><span>mm</span></span></label>
         <label for="pBed">Bed width
           <span class="inbox"><input id="pBed" type="number" inputmode="decimal" value="220"><span>mm</span></span></label>
         <button type="button" class="primary" id="pGo">Download STL</button>
@@ -679,7 +681,23 @@ function printProfiles(g,p){
   const brace = g.bk > 0 ? [[0,-p.bDrop],[g.bc,0],[g.bc*g.bk,0],[0,-p.bDrop*g.bk]] : null;
   return {plate, tie, brace, T};
 }
-function printKit(g,p,scale,bedW){
+// a printer rounds every inside corner, which stops the mating corner going all the way in and leaves the piece
+// sitting high. Relief cuts a small diagonal into the wood at each inside corner so the rounding falls in empty space.
+function relieve(pts, r){
+  if (!(r > 0)) return pts;
+  const ccw = area2(pts) > 0, out = [];
+  pts.forEach((V, i) => {
+    const Pv = pts[(i - 1 + pts.length) % pts.length], N = pts[(i + 1) % pts.length];
+    const cr = (V[0]-Pv[0])*(N[1]-V[1]) - (V[1]-Pv[1])*(N[0]-V[0]);
+    const inside = ccw ? cr < -1e-9 : cr > 1e-9;               // reflex corner of the piece = inside corner of a notch
+    const lu = Math.hypot(Pv[0]-V[0], Pv[1]-V[1]), lw = Math.hypot(N[0]-V[0], N[1]-V[1]);
+    if (!inside || lu < 3*r || lw < 3*r) { out.push(V); return; }
+    const u = [(Pv[0]-V[0])/lu, (Pv[1]-V[1])/lu], w = [(N[0]-V[0])/lw, (N[1]-V[1])/lw];
+    out.push([V[0] + u[0]*r, V[1] + u[1]*r], [V[0] - (u[0]+w[0])*r, V[1] - (u[1]+w[1])*r], [V[0] + w[0]*r, V[1] + w[1]*r]);
+  });
+  return out;
+}
+function printKit(g,p,scale,bedW,reliefMm){
   const k = 1/scale, gap = 3, pr = printProfiles(g,p), L = [];
   const add = (name,n,t,pts) => { if (n > 0) L.push({name,n,t,pts}); };
   add('post',4,p.b,rectP(0,0,p.H+p.embed,p.b));
@@ -696,6 +714,7 @@ function printKit(g,p,scale,bedW){
     add('brace',(p.braceT?4:0)+(p.braceL?4:0),p.bt,pr.brace.map(([x,y]) => [x*cs - (y+p.bDrop)*sn, x*sn + (y+p.bDrop)*cs]));
   }
   L.forEach(o => {
+    o.pts = relieve(o.pts, (reliefMm || 0)*scale);   // relief is given in print mm
     const mx = Math.min(...o.pts.map(q=>q[0])), my = Math.min(...o.pts.map(q=>q[1]));
     o.pts = o.pts.map(([x,y]) => [x-mx, y-my]);
     o.w = Math.max(...o.pts.map(q=>q[0])); o.h = Math.max(...o.pts.map(q=>q[1]));
@@ -1570,11 +1589,12 @@ function select(part, mesh, byUser){
 function printInfo(){
   if (!G) return null;
   const scale = +$('pScale').value, mode = $('pMode').value, bed = Math.max(60, parseFloat($('pBed').value) || 220);
-  const res = mode === 'kit' ? printKit(G, PP, scale, bed) : printModel(G, PP, scale);
+  const relief = Math.max(0, parseFloat($('pRelief').value) || 0);
+  const res = mode === 'kit' ? printKit(G, PP, scale, bed, relief) : printModel(G, PP, scale);
   const sz = res.size.map(v => Math.round(v)).join(' × ');
   const thin = thinnest(G, PP)/scale;
   let t = mode === 'kit'
-    ? '<b>'+res.pieces+'</b> pieces on a <b>'+sz+'</b> mm plate. Each piece lies on its side, so the notches and angle cuts print exactly and need no supports. Glue them together like the real frame.'
+    ? '<b>'+res.pieces+'</b> pieces on a <b>'+sz+'</b> mm plate. Each piece lies on its side, so the notches and angle cuts print exactly and need no supports. Glue them together like the real frame. '+(relief > 0 ? 'Every inside corner of a notch has a <b>'+f1(relief)+'</b> mm relief cut, so the printer’s rounded corners do not hold the pieces up.' : 'Corner relief is off: rounded inside corners can make rafters sit a little high.')
     : 'The model is <b>'+sz+'</b> mm. The roof overhangs, so print it with supports.';
   t += ' Thinnest piece: <b>'+f1(thin)+'</b> mm'+(thin < 1.2 ? ', too thin for most printers. Use a larger scale.' : '.');
   $('pInfo').innerHTML = t;
@@ -1823,7 +1843,7 @@ document.querySelectorAll('.units button').forEach(b => b.addEventListener('clic
 }));
 try { setUnit(localStorage.getItem('gable-roof-cutter-unit') || 'mm'); } catch (e) {}
 showUnit();
-['pScale','pMode','pBed'].forEach(id => $(id).addEventListener('input', printInfo));
+['pScale','pMode','pBed','pRelief'].forEach(id => $(id).addEventListener('input', printInfo));
 window.addEventListener('resize', () => renderBlue());
 $('tMax').addEventListener('click', () => setMax(!$('viewer').classList.contains('max')));
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('viewer').classList.contains('max')) setMax(false); });

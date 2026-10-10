@@ -354,3 +354,56 @@ test('rafter layout marks: edges, gaps and centres match the rafters in the mode
   const { p, g } = setup();
   console.table(R.rafterLayout(g, p).map(r => ({ n: r.n, over: r.over, left: +r.left.toFixed(1), centre: +r.centre.toFixed(1), right: +r.right.toFixed(1), gap: r.gap == null ? null : +r.gap.toFixed(1) })));
 });
+
+test('assembly fit: every piece rests exactly on the piece under it (400 random roofs and the starting roof)', () => {
+  let seed = 99; const rnd = (a, b) => { seed = (seed * 1103515245 + 12345) % 2147483648; return a + (b - a) * seed / 2147483648; };
+  const cases = [{}].concat(Array.from({ length: 400 }, () => {
+    const rd = rnd(90, 250);
+    return { W: rnd(1500, 5000), Lc: rnd(1500, 5000), H: rnd(2000, 3200), b: rnd(80, 200), bh: rnd(100, 240), pitch: rnd(15, 55),
+      Oe: rnd(0, 800), Og: rnd(100, 700), ridgeW: rnd(60, 160), ridgeH: rnd(100, 250), rt: rnd(40, 100), rd, rtf: rnd(40, 160),
+      hb: rnd(10, rd / 3), hr: rnd(0, rd / 3), ridgeNotch: rnd(0, 1) > 0.3 };
+  }));
+  let worst = 0;
+  for (const over of cases) {
+    const { p, g } = setup(over);
+    if (g.kp <= 0) continue;                       // the app warns about this case
+    const pr = R.printProfiles(g, p), P = g.prof, rw2 = p.ridgeW / 2;
+    const plateTop = p.H + p.bh, tieTop = p.H + Math.max(...pr.tie.map(q => q[1]));
+    const gaps = {
+      'eaves beam on post': (p.H + Math.min(...pr.plate.map(q => q[1]))) - p.H,
+      'cross beam top flush with eaves beam top': tieTop - plateTop,
+      'ridge post on cross beam': g.z0 - tieTop,
+      'ridge beam on ridge post': (g.zR - p.ridgeH) - (g.z0 + g.kp),
+      'rafter seat on eaves beam': P[4][1] - plateTop,
+      'rafter seat over the eaves beam': Math.max(0, (p.W / 2) - P[5][0]) > 0 && g.seat <= p.b ? 1 : 0,
+      'rafter on ridge beam': (p.hr > 0 ? P[7][1] : g.zU(rw2)) - g.zR,
+    };
+    Object.entries(gaps).forEach(([k, v]) => { worst = Math.max(worst, Math.abs(v)); assert.ok(Math.abs(v) < 1e-6, `${k}: off by ${v} mm for ${JSON.stringify(over)}`); });
+  }
+  console.log('largest gap or overlap between resting pieces:', worst.toExponential(2), 'mm');
+});
+
+test('corner relief: inside corners are cleared, bearing faces stay where they were, the kit stays printable', () => {
+  const inside = (pt, poly) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi) c = !c; } return c; };
+  for (const over of [{}, { pitch: 25 }, { ridgeNotch: false }]) {
+    const { p, g } = setup(over), r = 10;                       // 0.5 mm at 1:20
+    const raf = R.relieve(g.prof, r), P = g.prof;
+    const corners = p.hr > 0 ? [P[4], P[7]] : [P[4]];
+    corners.forEach(V => {
+      assert.ok(!inside([V[0] - 0.01, V[1] - 0.01], raf) && !inside([V[0] + 1, V[1] + 1], raf), 'the old inside corner is now empty');
+    });
+    // the seat and heel still bear where they did: points just along them are still on the boundary of the wood
+    const has = q => raf.some(v => Math.abs(v[0] - q[0]) < 1e-9 && Math.abs(v[1] - q[1]) < 1e-9);
+    assert.ok(has([P[4][0] - r, P[4][1]]) && has([P[4][0], P[4][1] - r]), 'birdsmouth seat and heel keep their lines');
+    assert.ok(has(P[3]) && has(P[5]), 'birdsmouth outer corners unchanged');
+    const pr = R.printProfiles(g, p), plate = R.relieve(pr.plate, r), tie = R.relieve(pr.tie, r);
+    assert.equal(plate.length, pr.plate.length + 4 * 2, 'two inside corners per eaves beam notch relieved');
+    assert.equal(tie.length, pr.tie.length + 2 * 2, 'one inside corner per cross beam end relieved');
+    const k0 = R.printKit(g, p, 20, 220, 0), k1 = R.printKit(g, p, 20, 220, 0.5);
+    assert.equal(closedSolid(k1.tris), 0, 'relieved kit is closed');
+    const v0 = volume(k0.tris), v1 = volume(k1.tris);
+    assert.ok(v1 < v0 && v0 - v1 < v0 * 0.01, 'relief removes only a tiny amount');
+  }
+});
