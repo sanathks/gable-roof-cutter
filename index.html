@@ -137,6 +137,11 @@ svg text.c{fill:var(--chalk)}
 svg text.m{fill:var(--muted)}
 svg .ang{fill:none;stroke:var(--warn);stroke-width:1.4}
 svg text.angt{fill:var(--warn);font-weight:600}
+svg text.n{fill:var(--ink);font-family:var(--f-display);font-size:14px;font-weight:600;letter-spacing:.06em}
+.role{font-size:13px;color:var(--muted);max-width:70ch}
+.field.rel,.check.rel{background:var(--chalk-soft);box-shadow:0 0 0 6px var(--chalk-soft);border-radius:4px}
+.rail-for{display:none;font-size:12px;color:var(--chalk);font-weight:600;padding:8px 0 0}
+.rail-for.on{display:block}
 
 /* cut list */
 .tablewrap{overflow-x:auto}
@@ -157,6 +162,11 @@ tfoot td{font-weight:600;border-bottom:0}
 .cover b{font-family:var(--f-mono);font-weight:500;font-size:1.05rem}
 .foot{color:var(--muted);font-size:12px;max-width:80ch}
 .mbar{display:none}
+.top-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.units{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.units button{border:0;border-radius:0;padding:6px 12px;font-family:var(--f-mono);background:var(--panel)}
+.units button+button{border-left:1px solid var(--line)}
+.units button[aria-pressed="true"]{background:var(--chalk);color:var(--panel)}
 .printrow{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:end}
 .printrow label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:500}
 .printrow select{font:500 14px var(--f-body);color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:7px 8px;min-height:36px}
@@ -206,12 +216,19 @@ tfoot td{font-weight:600;border-bottom:0}
     <h1>Gable Roof Cutter</h1>
     <p>Purlin roof on four posts. Change any size and the model, cut drawings and cut list update. Opens with the sizes of a 2080 mm wide, 40° shade roof.</p>
   </div>
-  <button id="reset" type="button">Reset to starting sizes</button>
+  <div class="top-tools">
+    <div class="units" role="group" aria-label="Units">
+      <button type="button" data-u="mm">mm</button><button type="button" data-u="cm">cm</button><button type="button" data-u="in">in</button>
+    </div>
+    <button type="button" class="primary" id="pdfBtn">Download PDF</button>
+    <button id="reset" type="button">Reset to starting sizes</button>
+  </div>
 </header>
 
 <main class="bench">
   <aside class="rail" id="rail" aria-label="Sizes">
     <div class="rail-head"><h2>Sizes</h2><div><button type="button" id="reset2">Reset</button><button type="button" class="primary" id="railDone">Done</button></div></div>
+    <p class="rail-for" id="railFor"></p>
     <div id="railBody"></div>
   </aside>
 
@@ -228,6 +245,7 @@ tfoot td{font-weight:600;border-bottom:0}
       <div class="pick" id="pick"></div>
       <aside class="blueprint" id="blueprint" aria-label="Blueprint of the selected piece">
         <div class="bp-head"><div id="bpTitle"></div><button type="button" id="bpClose" aria-label="Close blueprint">Close</button></div>
+        <p class="role" id="bpRole"></p>
         <div class="drawings" id="bpDraw"></div>
         <ol class="steps" id="bpSteps"></ol>
       </aside>
@@ -240,6 +258,7 @@ tfoot td{font-weight:600;border-bottom:0}
       <div class="card-head"><h2>Cut drawing</h2><p>Tap a piece in the model or the cut list.</p></div>
       <div class="chips" id="chips" role="tablist" aria-label="Pieces"></div>
       <div class="piece-title" id="pieceTitle"></div>
+      <p class="role" id="pieceRole"></p>
       <div class="piece-body">
         <div class="drawings" id="pieceDraw"></div>
         <ol class="steps" id="pieceSteps"></ol>
@@ -285,6 +304,7 @@ tfoot td{font-weight:600;border-bottom:0}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 (function(){
 const $ = id => document.getElementById(id);
@@ -332,12 +352,41 @@ const PART = {
   braceL:{name:'Braces along',color:0xa77a52,css:'#a77a52'}
 };
 
+const ROLE = {
+  posts:'Post. Carries the whole roof down to the ground, one at each corner.',
+  plates:'Eaves beam (wall plate). Runs along the post tops on each long side. The bottom of every rafter sits on it, notched over it with the birdsmouth.',
+  ties:'Cross beam (tie beam). Joins the two sides across the post tops so the roof cannot spread apart, and carries the ridge post.',
+  king:'Ridge post (king post). Stands on the middle of the cross beam and holds up the ridge beam.',
+  ridge:'Ridge beam (ridge purlin). Runs along the peak. The top of every rafter sits on it, notched over it with the ridge notch.',
+  rafF:'Rafter over a post. The sloping piece that carries the roof covering from the ridge down past the eaves. Same cuts as the other rafters.',
+  rafC:'Rafter. The sloping piece that carries the roof covering from the ridge down past the eaves: ridge cut at the top, ridge notch over the ridge beam, birdsmouth over the eaves beam, tail cut at the end.',
+  braceT:'Knee brace, across. The short diagonal between a post and the cross beam. It stops the frame swaying sideways (racking).',
+  braceL:'Knee brace, along. The short diagonal between a post and the eaves beam. It stops the frame swaying along its length (racking).'
+};
+const RELATED = {
+  posts:['H','b','embed','bDrop'], plates:['Lc','b','bh','Og'], ties:['W','b','bh'], king:['b','bh','ridgeH','hr','pitch'],
+  ridge:['ridgeW','ridgeH','Lc','Og'], rafF:['pitch','Oe','rtf','rd','hb','hr'], rafC:['pitch','Oe','rt','rd','maxSp','hb','hr'],
+  braceT:['bAng','bDrop','be','bt','braceT'], braceL:['bAng','bDrop','be','bt','braceL']
+};
 let P = Object.assign({}, DEF);
 try { const s = JSON.parse(localStorage.getItem('gable-roof-cutter-v1') || 'null'); if (s) P = Object.assign({}, DEF, s); } catch (e) {}
 function save(){ try { localStorage.setItem('gable-roof-cutter-v1', JSON.stringify(P)); } catch (e) {} }
 
 const r0 = n => Math.round(n);
-const f0 = n => r0(n).toLocaleString('en-US');
+// lengths are kept in mm everywhere; f0 shows one in the chosen unit (inches as carpenter fractions to 1/16)
+let UNIT = 'mm';
+const UNITS = {mm:1, cm:10, in:25.4};
+function setUnit(u){ if (UNITS[u]) UNIT = u; }
+const UL = () => UNIT;
+function fIn(mm){
+  const v = Math.abs(mm)/25.4; let w = Math.floor(v), n = Math.round((v - w)*16), d = 16;
+  if (n === 16) { w++; n = 0; }
+  while (n && n % 2 === 0) { n /= 2; d /= 2; }
+  return (mm < 0 ? '-' : '') + (n ? (w ? w+' ' : '') + n+'/'+d : String(w));
+}
+const f0 = n => UNIT === 'mm' ? r0(n).toLocaleString('en-US')
+  : UNIT === 'cm' ? (n/10).toLocaleString('en-US', {minimumFractionDigits:1, maximumFractionDigits:1})
+  : fIn(n);
 const f1 = n => (Math.round(n*10)/10).toString();
 const isPhone = () => window.matchMedia('(max-width:760px)').matches;
 
@@ -397,7 +446,7 @@ function parts(g,p){
   const nF = g.raf.filter(r=>r.f).length*2, nC = g.raf.filter(r=>!r.f).length*2;
   const sameW = p.rtf === p.rt;
   const L = [];
-  L.push({id:'posts',qty:4,w:p.b,h:p.b,len:p.H+p.embed,note:'Square cuts. Brace marks on the two inside faces.'+(p.embed>0?' Includes '+f0(p.embed)+' mm below ground.':'')});
+  L.push({id:'posts',qty:4,w:p.b,h:p.b,len:p.H+p.embed,note:'Square cuts. Brace marks on the two inside faces.'+(p.embed>0?' Includes '+f0(p.embed)+' '+UL()+' below ground.':'')});
   L.push({id:'plates',qty:2,w:p.b,h:p.bh,len:g.Lt,note:'Full length. Halving notch on top over each post, '+f0(p.Og)+' from each end.'});
   L.push({id:'ties',qty:2,w:p.b,h:p.bh,len:p.W+2*p.b,note:'Across the post tops. Halving notch underneath at each end.'});
   if (g.kp > 0) L.push({id:'king',qty:2,w:p.b,h:p.b,len:g.kp,note:'Shoulder to shoulder. Add tenons if you joint it into the beams.'});
@@ -417,16 +466,16 @@ function parts(g,p){
 function warnings(g,p){
   const w = [];
   if (g.kp <= 0) w.push(['warn','The ridge beam is taller than the space under the rafters at this pitch. Make it lower or raise the pitch.']);
-  if (p.hb > g.dz/3) w.push(['warn','The birdsmouth cuts away more than a third of the rafter ('+f0(p.hb)+' of '+f0(g.dz)+' mm plumb). That weakens the rafter where it sits on the beam.']);
-  if (p.hr > g.dz/2) w.push(['warn','The ridge notch cuts away more than half the rafter ('+f0(p.hr)+' of '+f0(g.dz)+' mm plumb).']);
-  if (g.seat > p.b) w.push(['warn','The birdsmouth seat ('+f0(g.seat)+' mm) is longer than the eaves beam is wide ('+f0(p.b)+' mm), so the notch runs past the inside of the beam. Make the notch shallower or the roof steeper.']);
-  if (g.Lt/2 < g.frameZ + p.rtf/2) w.push(['warn','The rafters over the posts ('+f0(p.rtf)+' mm wide) stick out past the end of the roof. Make the gable overhang at least '+f0(Math.max(0,(p.rtf-p.b)/2))+' mm.']);
-  if (p.hb <= 0) w.push(['warn','A birdsmouth depth of 0 leaves the rafter resting on a corner. Use a notch of at least 20 mm.']);
+  if (p.hb > g.dz/3) w.push(['warn','The birdsmouth cuts away more than a third of the rafter ('+f0(p.hb)+' of '+f0(g.dz)+' '+UL()+' plumb). That weakens the rafter where it sits on the beam.']);
+  if (p.hr > g.dz/2) w.push(['warn','The ridge notch cuts away more than half the rafter ('+f0(p.hr)+' of '+f0(g.dz)+' '+UL()+' plumb).']);
+  if (g.seat > p.b) w.push(['warn','The birdsmouth seat ('+f0(g.seat)+' '+UL()+') is longer than the eaves beam is wide ('+f0(p.b)+' '+UL()+'), so the notch runs past the inside of the beam. Make the notch shallower or the roof steeper.']);
+  if (g.Lt/2 < g.frameZ + p.rtf/2) w.push(['warn','The rafters over the posts ('+f0(p.rtf)+' '+UL()+' wide) stick out past the end of the roof. Make the gable overhang at least '+f0(Math.max(0,(p.rtf-p.b)/2))+' '+UL()+'.']);
+  if (p.hb <= 0) w.push(['warn','A birdsmouth depth of 0 leaves the rafter resting on a corner. Use a notch of at least '+f0(20)+' '+UL()+'.']);
   if (g.bk <= 0.15) w.push(['warn','The braces are too short for their depth. Increase the brace drop or use thinner braces.']);
-  if ((p.braceT || p.braceL) && p.H - p.bDrop < 2000) w.push(['warn','Headroom next to the posts, under the braces, is only '+f0(p.H-p.bDrop)+' mm.']);
-  if (p.maxSp > 900) w.push(['warn','Rafters up to '+f0(p.maxSp)+' mm apart. Check your battens or sheets can span that.']);
+  if ((p.braceT || p.braceL) && p.H - p.bDrop < 2000) w.push(['warn','Headroom next to the posts, under the braces, is only '+f0(p.H-p.bDrop)+' '+UL()+'.']);
+  if (p.maxSp > 900) w.push(['warn','Rafters up to '+f0(p.maxSp)+' '+UL()+' apart. Check your battens or sheets can span that.']);
   if (p.pitch < 15 && p.gauge > 0) w.push(['info','Most clay and concrete tiles need a steeper roof than '+f1(p.pitch)+'°. Check the tile maker’s minimum pitch.']);
-  if (p.W < 2500) w.push(['info','The clear width is '+f0(p.W)+' mm, and the braces narrow it near the posts. Fine for a seating or entrance shelter, tight for a car.']);
+  if (p.W < 2500) w.push(['info','The clear width is '+f0(p.W)+' '+UL()+', and the braces narrow it near the posts. Fine for a seating or entrance shelter, tight for a car.']);
   return w;
 }
 
@@ -629,7 +678,7 @@ function beamSVG(o, W){
     h += '<text class="c" transform="rotate(-90 '+(x+4)+' '+(y1+8)+')" x="'+(x+4)+'" y="'+(y1+8)+'" text-anchor="end">'+f0(m.x)+'</text>';
   });
   const yb = y1 + (mb ? 62 : 14) + 16;
-  h += hdim(X(0), X(o.len), yb, f0(o.len)+' mm');
+  h += hdim(X(0), X(o.len), yb, f0(o.len)+' '+UL()+'');
   if (o.endL) h += '<text class="m" x="'+X(0)+'" y="'+(yb+18)+'">'+o.endL+'</text>';
   if (o.endR) h += '<text class="m" x="'+X(o.len)+'" y="'+(yb+18)+'" text-anchor="end">'+o.endR+'</text>';
   return svg(W, yb + (o.endL||o.endR ? 26 : 10), h, o.label);
@@ -651,12 +700,14 @@ function rafterSVGs(g,p,W){
   if (p.hr > 0) { const r7 = M(rt); a += '<line class="mark" x1="'+r7[0]+'" y1="'+r7[1]+'" x2="'+q[6][0]+'" y2="'+q[6][1]+'"/>'; }
   a += angleMark(q[0], q[1], q[q.length-1], 22, 34);
   a += angleMark(q[2], q[1], q[3], 22, 34);
-  a += hdim(q[0][0], q[1][0], 20, f0(g.rafterLen)+' mm');
+  a += hdim(q[0][0], q[1][0], 20, f0(g.rafterLen)+' '+UL()+'');
   a += hdim(q[0][0], h7[0], 46, f0(g.heel)+' to birdsmouth', 'c');
   const yb = top + (maxY-minY)*s + 18;
   a += '<text class="m" x="'+PAD+'" y="'+(yb+14)+'">ridge cut</text>';
   a += '<text class="m" x="'+(W-PAD)+'" y="'+(yb+14)+'" text-anchor="end">tail cut</text>';
-  const full = svg(W, yb+22, a, 'Whole rafter with measurements');
+  a += '<text class="n" x="'+q[4][0].toFixed(1)+'" y="'+(yb+30)+'" text-anchor="middle">birdsmouth ↑</text>';
+  if (p.hr > 0) a += '<text class="n" x="'+Math.max(q[7][0], PAD+60).toFixed(1)+'" y="'+(yb+30)+'" text-anchor="middle">ridge notch ↑</text>';
+  const full = svg(W, yb+38, a, 'Whole rafter with measurements');
 
   // birdsmouth close up
   const wmm = Math.max((g.seat + p.hb)*3.2, p.rd*1.8, 200), s2 = (W-2*PAD)/wmm, top2 = 44, cx = pts[4][0];
@@ -672,7 +723,9 @@ function rafterSVGs(g,p,W){
   d += '<text x="'+(mSeat[0]-14)+'" y="'+(mSeat[1]+4)+'" text-anchor="end">seat '+f0(g.seat)+'</text>';
   const cB = [(r[3][0]+r[4][0]+r[5][0])/3, (r[3][1]+r[4][1]+r[5][1])/3];
   d += angleMark(r[4], r[3], r[5], 14, 22, cB) + angleMark(r[3], r[4], r[5], 18, 26, cB) + angleMark(r[5], r[4], r[3], 18, 26, cB);
-  const detail = svg(W, top2 + (maxY-minY)*s2 + 70, d, 'Birdsmouth close up');
+  const hD = top2 + (maxY-minY)*s2 + 70;
+  d += '<text class="n" x="'+(W-PAD)+'" y="'+(hD-10)+'" text-anchor="end">BIRDSMOUTH</text>';
+  const detail = svg(W, hD, d, 'Birdsmouth close up');
   if (!(p.hr > 0)) return [full, detail, null];
 
   // ridge notch close up, ridge end at the left edge
@@ -692,7 +745,10 @@ function rafterSVGs(g,p,W){
   const cR = [(u[6][0]+u[7][0]+u[8][0])/3, (u[6][1]+u[7][1]+u[8][1])/3];
   e += angleMark(u[7], u[6], u[8], 14, 22, cR) + angleMark(u[6], u[7], along(u[6], u[5]), 18, 26, cR);
   e += u.length > 9 ? angleMark(u[8], u[7], u[6], 18, 26, cR) : angleMark(u[8], u[7], along(u[8], u[0]), 14, 24, cR);
-  const ridgeD = svg(W, top3 + (maxY-minY)*s3 + 64, e, 'Ridge notch close up');
+  const hR = top3 + (maxY-minY)*s3 + 64;
+  e += '<text class="n" x="'+(W-PAD)+'" y="'+(hR-10)+'" text-anchor="end">RIDGE NOTCH</text>';
+  e += '<text class="m" x="'+(u[0][0]+4).toFixed(1)+'" y="'+(u[u.length-1][1]+16).toFixed(1)+'">ridge cut</text>';
+  const ridgeD = svg(W, hR, e, 'Ridge notch close up');
   return [full, detail, ridgeD];
 }
 
@@ -718,24 +774,27 @@ function braceSVG(g,p,W){
 /* ---------- inputs ---------- */
 function buildRail(){
   const rail = $('railBody'); rail.innerHTML = '';
+  setTimeout(() => { if (typeof markRelated === 'function') markRelated(); }, 0);
   GROUPS.forEach(gr => {
     const fs = document.createElement('fieldset');
     fs.innerHTML = '<legend>'+gr.t+'</legend>';
     gr.f.forEach(([k,label,unit,hint]) => {
       if (unit === 'check') {
-        const d = document.createElement('label'); d.className='check';
+        const d = document.createElement('label'); d.className='check'; d.dataset.k = k;
         d.innerHTML = '<input type="checkbox" id="in-'+k+'"'+(P[k]?' checked':'')+'> '+label;
         fs.appendChild(d);
         d.querySelector('input').addEventListener('change', e => { P[k]=e.target.checked; save(); update(); });
         return;
       }
-      const d = document.createElement('div'); d.className='field';
-      d.innerHTML = '<label for="in-'+k+'">'+label+'</label><div class="inbox"><input id="in-'+k+'" type="number" inputmode="decimal" step="any" value="'+P[k]+'"><span>'+unit+'</span></div>'+(hint?'<small>'+hint+'</small>':'');
+      const d = document.createElement('div'); d.className='field'; d.dataset.k = k;
+      const isLen = unit === 'mm', f = isLen ? UNITS[UNIT] : 1;
+      const shown = isLen ? Math.round(P[k]/f*1000)/1000 : P[k];
+      d.innerHTML = '<label for="in-'+k+'">'+label+'</label><div class="inbox"><input id="in-'+k+'" type="number" inputmode="decimal" step="any" value="'+shown+'"><span>'+(isLen ? UL() : unit)+'</span></div>'+(hint?'<small>'+hint+'</small>':'');
       fs.appendChild(d);
       d.querySelector('input').addEventListener('input', e => {
         const v = parseFloat(e.target.value);
         if (!isFinite(v)) return;
-        P[k] = v; save(); update();
+        P[k] = v*f; save(); update();
       });
     });
     rail.appendChild(fs);
@@ -752,19 +811,19 @@ function pieceView(id, g, p, W){
       const marks = (p.braceT || p.braceL) && g.bk > 0 ? [{x:p.bDrop}] : [];
       return {draw:[[beamSVG({len:L, depth:p.b, marksTop:marks, hatch:p.embed>0?p.H:null, endL:'top', endR:'bottom', label:'Post'}, W),
           'Post on its side, top on the left.'+(p.embed>0?' Shaded part goes below ground.':'')]],
-        steps:['Cut to '+B(f0(L))+' mm, square at both ends.',
-          marks.length ? 'On the inside faces, mark the brace long point '+B(f0(p.bDrop))+' mm down from the top.' : 'No braces, so no marks.',
-          p.embed>0 ? 'Mark the ground line '+B(f0(p.H))+' mm from the top.' : 'Fix it to its post base with the top level with the others.']};
+        steps:['Cut to '+B(f0(L))+' '+UL()+', square at both ends.',
+          marks.length ? 'On the inside faces, mark the brace long point '+B(f0(p.bDrop))+' '+UL()+' down from the top.' : 'No braces, so no marks.',
+          p.embed>0 ? 'Mark the ground line '+B(f0(p.H))+' '+UL()+' from the top.' : 'Fix it to its post base with the top level with the others.']};
     }
     case 'plates': {
       const notches = [{x:p.Og,w:p.b,d:p.bh/2},{x:g.Lt-p.Og-p.b,w:p.b,d:p.bh/2}];
       const bm = p.braceL && g.bk > 0 ? [{x:p.Og+p.b+g.bc},{x:g.Lt-p.Og-p.b-g.bc}] : [];
       return {draw:[[beamSVG({len:g.Lt, depth:p.bh, top:notches, marksTop:rafterX.map(x=>({x})), marksBot:[{x:p.Og},{x:g.Lt-p.Og-p.b}].concat(bm), label:'Eaves beam'}, W),
           'Top: rafter centres from the left end. Bottom: notch starts'+(bm.length?' and brace long points':'')+'.']],
-        steps:['Cut to '+B(f0(g.Lt))+' mm.',
-          'From each end measure '+B(f0(p.Og))+' mm. Cut a halving notch in the top, '+B(f0(p.b))+' wide and '+B(f0(p.bh/2))+' deep. It sits over the post and takes the cross beam.',
-          'Mark the rafter centres along the top: '+rafterX.map(x=>B(f0(x))).join(', ')+' mm from the left end.',
-          bm.length ? 'Mark the brace long points underneath at '+bm.map(m=>B(f0(m.x))).join(' and ')+' mm.' : 'No braces along this beam.']};
+        steps:['Cut to '+B(f0(g.Lt))+' '+UL()+'.',
+          'From each end measure '+B(f0(p.Og))+' '+UL()+'. Cut a halving notch in the top, '+B(f0(p.b))+' wide and '+B(f0(p.bh/2))+' deep. It sits over the post and takes the cross beam.',
+          'Mark the rafter centres along the top: '+rafterX.map(x=>B(f0(x))).join(', ')+' '+UL()+' from the left end.',
+          bm.length ? 'Mark the brace long points underneath at '+bm.map(m=>B(f0(m.x))).join(' and ')+' '+UL()+'.' : 'No braces along this beam.']};
     }
     case 'ties': {
       const len = p.W + 2*p.b;
@@ -772,45 +831,45 @@ function pieceView(id, g, p, W){
       const bm = p.braceT && g.bk > 0 ? [{x:p.b+g.bc},{x:len-p.b-g.bc}] : [];
       return {draw:[[beamSVG({len, depth:p.bh, bot:notches, marksTop:[{x:len/2}], marksBot:bm, label:'Cross beam'}, W),
           'Top: centre of the ridge post. Bottom: brace long points.']],
-        steps:['Cut to '+B(f0(len))+' mm.',
+        steps:['Cut to '+B(f0(len))+' '+UL()+'.',
           'At each end cut a halving notch underneath, '+B(f0(p.b))+' long and '+B(f0(p.bh/2))+' deep. These drop into the notches on the eaves beams.',
-          'Mark the centre at '+B(f0(len/2))+' mm for the ridge post.',
-          bm.length ? 'Mark the brace long points underneath at '+bm.map(m=>B(f0(m.x))).join(' and ')+' mm.' : 'No braces under this beam.']};
+          'Mark the centre at '+B(f0(len/2))+' '+UL()+' for the ridge post.',
+          bm.length ? 'Mark the brace long points underneath at '+bm.map(m=>B(f0(m.x))).join(' and ')+' '+UL()+'.' : 'No braces under this beam.']};
     }
     case 'king':
       return {draw:[[beamSVG({len:g.kp, depth:p.b, label:'Ridge post', endL:'top', endR:'bottom'}, Math.min(W, 420)), 'Shoulder to shoulder.']],
-        steps:['Cut to '+B(f0(g.kp))+' mm, square at both ends.',
+        steps:['Cut to '+B(f0(g.kp))+' '+UL()+', square at both ends.',
           'Stand it on the centre mark of the cross beam. The ridge beam sits on top.',
           'If you use tenons, add their length to each end.']};
     case 'ridge':
       return {draw:[[beamSVG({len:g.Lt, depth:p.ridgeH, marksTop:rafterX.map(x=>({x})), marksBot:kingX.map(x=>({x})), label:'Ridge beam'}, W),
           'Top: rafter centres. Bottom: ridge post centres.']],
-        steps:['Cut to '+B(f0(g.Lt))+' mm.',
-          'Mark the rafter centres along the top: '+rafterX.map(x=>B(f0(x))).join(', ')+' mm from the left end.',
-          'Mark the ridge post centres underneath at '+kingX.map(x=>B(f0(x))).join(' and ')+' mm.']};
+        steps:['Cut to '+B(f0(g.Lt))+' '+UL()+'.',
+          'Mark the rafter centres along the top: '+rafterX.map(x=>B(f0(x))).join(', ')+' '+UL()+' from the left end.',
+          'Mark the ridge post centres underneath at '+kingX.map(x=>B(f0(x))).join(' and ')+' '+UL()+'.']};
     case 'rafF': case 'rafC': {
       const [full, detail, ridgeD] = rafterSVGs(g,p,W);
       const n = LIST.filter(r=>r.id==='rafF'||r.id==='rafC').reduce((s,r)=>s+r.qty,0);
       const draw = [[full,'Ridge end on the left. Measure along the top edge from the long point.']];
       if (ridgeD) draw.push([ridgeD,'Ridge notch. The seat sits flat on top of the ridge beam.']);
       draw.push([detail,'Birdsmouth. The notch sits on the outside top corner of the eaves beam.']);
-      const ridgeStep = p.hr > 0 ? ['Ridge notch: from the long point measure '+B(f0(g.rHeel))+' mm along the top edge and draw a plumb line. Measure '+B(f0(g.rHap))+' mm down it, then draw a line square to it towards the ridge end'+(g.rSeat < p.ridgeW/2 - 0.5 ? ' until it meets the bottom edge ('+B(f0(g.rSeat))+' mm)' : ' all the way to the ridge cut ('+B(f0(g.rSeat))+' mm)')+'. Cut out the piece.'] : [];
+      const ridgeStep = p.hr > 0 ? ['Ridge notch: from the long point measure '+B(f0(g.rHeel))+' '+UL()+' along the top edge and draw a plumb line. Measure '+B(f0(g.rHap))+' '+UL()+' down it, then draw a line square to it towards the ridge end'+(g.rSeat < p.ridgeW/2 - 0.5 ? ' until it meets the bottom edge ('+B(f0(g.rSeat))+' '+UL()+')' : ' all the way to the ridge cut ('+B(f0(g.rSeat))+' '+UL()+')')+'. Cut out the piece.'] : [];
       return {draw,
-        steps:['Framing square: '+B('12')+' on the blade, '+B(f1(12*g.tn))+' on the tongue ('+B(f0(1000*g.tn))+' mm rise per 1000 mm). Mark along the tongue for plumb lines, along the blade for the seat.',
+        steps:['Framing square: '+B('12')+' on the blade, '+B(f1(12*g.tn))+' on the tongue ('+B(r0(1000*g.tn))+' rise per 1000 run). Mark along the tongue for plumb lines, along the blade for the seat.',
           'Mark the ridge plumb cut at '+B(f1(90-p.pitch)+'°')+' to the top edge (mitre saw at '+B(f1(p.pitch)+'°')+'). Cut it. Its top corner is the long point.',
           ].concat(ridgeStep, [
-          'Birdsmouth: along the top edge from the long point, measure '+B(f0(g.heel))+' mm. Draw a plumb line.',
-          'On that line, measure '+B(f0(g.hap))+' mm down from the top edge. Draw a line square to it towards the ridge end. It meets the bottom edge after '+B(f0(g.seat))+' mm.',
+          'Birdsmouth: along the top edge from the long point, measure '+B(f0(g.heel))+' '+UL()+'. Draw a plumb line.',
+          'On that line, measure '+B(f0(g.hap))+' '+UL()+' down from the top edge. Draw a line square to it towards the ridge end. It meets the bottom edge after '+B(f0(g.seat))+' '+UL()+'.',
           'Cut out the triangle. That is the birdsmouth: heel '+B(f0(p.hb))+', seat '+B(f0(g.seat))+'.',
-          'From the long point measure '+B(f0(g.rafterLen))+' mm along the top edge. Draw a plumb line and cut the tail.',
+          'From the long point measure '+B(f0(g.rafterLen))+' '+UL()+' along the top edge. Draw a plumb line and cut the tail.',
           'Check it on the frame, then copy it for the other '+B(n-1)+'. Left and right are the same piece turned over.'])};
     }
     case 'braceT': case 'braceL':
       return {draw:[[braceSVG(g,p,W),'Laid flat. The long edge faces away from the corner.']],
         steps:['Cut the post end '+B(f1(90-p.bAng)+'°')+' off square.',
-          'From that end’s long point, measure '+B(f0(g.bL))+' mm along the same edge.',
-          'Cut the beam end '+B(f1(p.bAng)+'°')+' off square, sloping the other way. The short edge should measure '+B(f0(g.bS))+' mm.',
-          'Fix it with its long point '+B(f0(p.bDrop))+' mm down the post and '+B(f0(g.bc))+' mm out along the beam.']};
+          'From that end’s long point, measure '+B(f0(g.bL))+' '+UL()+' along the same edge.',
+          'Cut the beam end '+B(f1(p.bAng)+'°')+' off square, sloping the other way. The short edge should measure '+B(f0(g.bS))+' '+UL()+'.',
+          'Fix it with its long point '+B(f0(p.bDrop))+' '+UL()+' down the post and '+B(f0(g.bc))+' '+UL()+' out along the beam.']};
   }
   return {draw:[], steps:[]};
 }
@@ -824,10 +883,10 @@ function render(g,p){
   const vol = LIST.reduce((s,r)=>s + r.qty*r.len*r.w*r.h, 0)/1e9;
   const pcs = LIST.reduce((s,r)=>s + r.qty, 0);
   $('stats').innerHTML = [
-    ['Ridge height', f0(g.ridgeTop)+' mm'],
+    ['Ridge height', f0(g.ridgeTop)+' '+UL()+''],
     ['Posts, outside', f0(p.W+2*p.b)+' × '+f0(p.Lc+2*p.b)],
     ['Roof outline', f0(2*g.runX)+' × '+f0(g.Lt)],
-    ['Rafter length', f0(g.rafterLen)+' mm'],
+    ['Rafter length', f0(g.rafterLen)+' '+UL()+''],
     ['Timber', vol.toFixed(2)+' m³'],
     ['Pieces', pcs]
   ].map(([k,v])=>'<div class="stat"><span>'+k+'</span><b>'+v+'</b></div>').join('');
@@ -844,16 +903,17 @@ function render(g,p){
   });
 
   const side = g.rafterLen*g.Lt/1e6;
-  const cov = [['Each slope', f0(g.rafterLen)+' × '+f0(g.Lt)+' mm'], ['Roof area', (2*side).toFixed(2)+' m²'], ['Ridge cap', (g.Lt/1000).toFixed(2)+' m']];
+  const cov = [['Each slope', f0(g.rafterLen)+' × '+f0(g.Lt)+' '+UL()+''], ['Roof area', (2*side).toFixed(2)+' m²'], ['Ridge cap', (g.Lt/1000).toFixed(2)+' m']];
   if (p.gauge > 0) {
     const nb = Math.ceil(g.rafterLen/p.gauge) + 1;
-    cov.push(['Battens', (2*nb)+' at '+f0(g.Lt)+' mm']);
+    cov.push(['Battens', (2*nb)+' at '+f0(g.Lt)+' '+UL()+'']);
     cov.push(['Batten total', (2*nb*g.Lt/1000).toFixed(1)+' m']);
   }
   $('cover').innerHTML = cov.map(([k,v])=>'<div><span>'+k+'</span><b>'+v+'</b></div>').join('');
   renderPiece();
   renderPick();
   renderBlue();
+  markRelated();
 }
 
 let lastW = 0;
@@ -863,7 +923,8 @@ function renderPiece(){
   $('chips').querySelectorAll('button').forEach(b => b.addEventListener('click', () => select(b.dataset.part)));
   const r = LIST.find(x => x.id === shown);
   if (!r) return;
-  $('pieceTitle').innerHTML = '<h3>'+PART[r.id].name+'</h3><span class="big">'+f0(r.len)+' mm</span><span>'+r.qty+' pieces · '+f0(r.w)+' × '+f0(r.h)+'</span>';
+  $('pieceRole').textContent = ROLE[r.id] || '';
+  $('pieceTitle').innerHTML = '<h3>'+PART[r.id].name+'</h3><span class="big">'+f0(r.len)+' '+UL()+'</span><span>'+r.qty+' pieces · '+f0(r.w)+' × '+f0(r.h)+'</span>';
   const W = Math.max(280, Math.min($('pieceDraw').clientWidth || 340, 760));
   lastW = W;
   const v = pieceView(shown, G, PP, W);
@@ -886,7 +947,8 @@ function renderBlue(){
   v.classList.toggle('bp', on);
   if (!on) return;
   const r = LIST.find(x => x.id === selected); if (!r) return;
-  $('bpTitle').innerHTML = '<h3>'+PART[r.id].name+'</h3><p><span class="big">'+f0(r.len)+' mm</span> · '+r.qty+' × '+f0(r.w)+' × '+f0(r.h)+'</p>';
+  $('bpRole').textContent = ROLE[r.id] || '';
+  $('bpTitle').innerHTML = '<h3>'+PART[r.id].name+'</h3><p><span class="big">'+f0(r.len)+' '+UL()+'</span> · '+r.qty+' × '+f0(r.w)+' × '+f0(r.h)+'</p>';
   const W = Math.max(260, ($('bpDraw').clientWidth || 320));
   bpW = W;
   const pv = pieceView(selected, G, PP, W);
@@ -910,7 +972,7 @@ function goTo(id){
 }
 
 function copyList(){
-  const t = ['Piece\tQty\tSection mm\tLength mm\tNotes'].concat(LIST.map(r => PART[r.id].name+'\t'+r.qty+'\t'+f0(r.w)+' x '+f0(r.h)+'\t'+r0(r.len)+'\t'+r.note)).join('\n');
+  const t = ['Piece\tQty\tSection '+UL()+'\tLength '+UL()+'\tNotes'].concat(LIST.map(r => PART[r.id].name+'\t'+r.qty+'\t'+f0(r.w)+' x '+f0(r.h)+'\t'+f0(r.len)+'\t'+r.note)).join('\n');
   const btn = $('copy');
   const done = m => { btn.textContent = m; setTimeout(()=>btn.textContent='Copy cut list', 1600); };
   const fallback = () => {
@@ -1090,7 +1152,7 @@ function showDim(mesh){
   scene.add(dimObj);
   dimMid = A.clone().add(B).multiplyScalar(0.5);
   const r = LIST.find(x => x.id === mesh.userData.part);
-  $('dimlabel').textContent = r ? f0(r.len) : '';
+  $('dimlabel').textContent = r ? PART[r.id].name+' · '+f0(r.len)+' '+UL() : '';
   $('dimlabel').hidden = !r;
 }
 function placeLabel(){
@@ -1102,6 +1164,19 @@ function placeLabel(){
   lab.style.transform = 'translate('+((v.x+1)/2*el.clientWidth)+'px,'+((1-v.y)/2*el.clientHeight)+'px) translate(-50%,-50%)';
 }
 
+function markRelated(){
+  const keys = selected ? (RELATED[selected] || []) : [];
+  let first = null;
+  document.querySelectorAll('#railBody [data-k]').forEach(el => { const on = keys.includes(el.dataset.k); el.classList.toggle('rel', on); if (on && !first) first = el; });
+  const rf = $('railFor');
+  rf.textContent = selected ? 'Highlighted: sizes that shape the '+PART[selected].name.toLowerCase() : '';
+  rf.classList.toggle('on', !!selected);
+  const rail = $('rail');
+  if (first && rail.scrollHeight > rail.clientHeight + 4) {
+    const top = first.getBoundingClientRect().top - rail.getBoundingClientRect().top + rail.scrollTop - 60;
+    rail.scrollTo({top: Math.max(0, top), behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+  }
+}
 function select(part, mesh){
   selected = part;
   if (part) shown = part;
@@ -1139,6 +1214,176 @@ function downloadStl(){
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
+/* ---------- A4 PDF blueprint ---------- */
+// drawings carry class names only, so the PDF gets its own fixed light colours
+const PRINT_CSS = '<style>.wood{fill:#e3ebfb;stroke:#1c2320;stroke-width:1.4}.ground{fill:#d5dad4}.dim{stroke:#59635e;stroke-width:1}'+
+  '.mark{stroke:#1d5bd0;stroke-width:1.4;stroke-dasharray:4 3}text{fill:#1c2320;font-family:"Courier New",Courier,monospace;font-size:12px}'+
+  'text.c{fill:#1d5bd0}text.m{fill:#59635e}text.n{font-family:Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;letter-spacing:.06em}.ang{fill:none;stroke:#b05a00;stroke-width:1.4}text.angt{fill:#b05a00;font-weight:700}</style>';
+function svgToPng(str, k){
+  return new Promise((res, rej) => {
+    const m = str.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/), w = +m[1], h = +m[2];
+    const s = str.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="'+(w*k)+'" height="'+(h*k)+'" ').replace(/(<svg[^>]*>)/, '$1'+PRINT_CSS);
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas'); c.width = w*k; c.height = h*k;
+      const x = c.getContext('2d'); x.fillStyle = '#ffffff'; x.fillRect(0,0,c.width,c.height); x.drawImage(img,0,0,c.width,c.height);
+      res({url:c.toDataURL('image/png'), w, h});
+    };
+    img.onerror = () => rej(new Error('drawing failed'));
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s);
+  });
+}
+// render the model from a set angle on white, then put the live view back
+function snapshot(kind){
+  if (!renderer || !G) return null;
+  const W = 1600, H = 1000, pr = renderer.getPixelRatio();
+  const keep = {bg:scene.background, pos:camera.position.clone(), tgt:controls.target.clone(), fov:camera.fov, aspect:camera.aspect};
+  const vis = model.children.map(o => o.visible);
+  model.children.forEach(o => o.visible = true);
+  if (dimObj) dimObj.visible = false;
+  const was = selected; selected = null; highlight();
+  renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+  scene.background = new THREE.Color(0xffffff); grid.visible = kind === 'persp';
+  camera.aspect = W/H;
+  const h = G.ridgeTop*S, wide = 2*G.runX*S, long = G.Lt*S;
+  if (kind === 'persp') {
+    camera.fov = 38; const span = Math.max(long, wide, h);
+    controls.target.set(0, h*0.5, 0); camera.position.set(span*1.3, span*0.85, span*1.55);
+  } else {
+    camera.fov = 10; const t = Math.tan(5*Math.PI/180), across = kind === 'front' ? wide : long;
+    const d = Math.max(h*0.62, across*0.62/camera.aspect)/t;
+    controls.target.set(0, h/2, 0);
+    camera.position.set(kind === 'side' ? d : 0, h/2, kind === 'front' ? d : 0);
+  }
+  camera.updateProjectionMatrix(); camera.lookAt(controls.target);
+  renderer.render(scene, camera);
+  const url = renderer.domElement.toDataURL('image/jpeg', 0.92);
+  scene.background = keep.bg; grid.visible = true;
+  camera.fov = keep.fov; camera.position.copy(keep.pos); controls.target.copy(keep.tgt);
+  renderer.setPixelRatio(pr);
+  model.children.forEach((o,i) => o.visible = vis[i]);
+  if (dimObj) dimObj.visible = true;
+  selected = was; highlight(); size(); controls.update();
+  return url;
+}
+async function makePdf(check){
+  if (!window.jspdf) throw new Error('The PDF tool did not load. Check your connection and reload the page.');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({unit:'mm', format:'a4'});
+  const M = 14, PW = 210, PH = 297, CW = PW - 2*M, INK = [28,35,32], CHALK = [29,91,208], MUTED = [89,99,94], WARN = [176,90,0];
+  const strip = t => t.replace(/<[^>]+>/g, '');
+  let y = M;
+  const color = c => doc.setTextColor(c[0], c[1], c[2]);
+  const font = (f, st, sz) => { doc.setFont(f, st); doc.setFontSize(sz); };
+  const room = h => { if (y + h > PH - M - 6) { doc.addPage(); y = M; } };
+  const heading = (t, sz) => { room(sz*0.6 + 6); font('helvetica','bold',sz); color(INK); doc.text(t, M, y + sz*0.35); y += sz*0.45 + 3; };
+  const para = (t, sz, c, indent) => {
+    font('helvetica','normal',sz); color(c || INK);
+    const lines = doc.splitTextToSize(strip(t), CW - (indent||0));
+    lines.forEach(l => { room(sz*0.42); doc.text(l, M + (indent||0), y + sz*0.32); y += sz*0.42; });
+    y += 1.2;
+  };
+  const image = (url, w, h, fmt) => { room(h + 2); doc.addImage(url, fmt || 'PNG', M, y, w, h); y += h + 2; };
+  const rule = () => { doc.setDrawColor(205,211,205); doc.line(M, y, PW - M, y); y += 4; };
+  const U = UL(), date = new Date().toISOString().slice(0,10);
+
+  // cover
+  font('helvetica','bold',24); color(INK); doc.text('Gable Roof Cutter', M, y + 8); y += 12;
+  font('helvetica','normal',10); color(MUTED);
+  doc.text('Blueprint for a purlin roof on four posts  ·  '+date+'  ·  lengths in '+U+', angles in degrees', M, y + 3); y += 8;
+  const persp = snapshot('persp');
+  if (persp) image(persp, CW, CW*0.625, 'JPEG');
+  const stats = [['Ridge height', f0(G.ridgeTop)], ['Posts, outside', f0(PP.W+2*PP.b)+' × '+f0(PP.Lc+2*PP.b)],
+    ['Roof outline', f0(2*G.runX)+' × '+f0(G.Lt)], ['Rafter length', f0(G.rafterLen)], ['Roof pitch', f1(PP.pitch)+'°'],
+    ['Pieces', String(LIST.reduce((s,r)=>s+r.qty,0))]];
+  const colW = CW/3;
+  stats.forEach((st, i) => {
+    const cx = M + (i%3)*colW, cy = y + Math.floor(i/3)*12;
+    font('helvetica','normal',8); color(MUTED); doc.text(st[0].toUpperCase(), cx, cy + 3);
+    font('courier','bold',12); color(INK); doc.text(st[1] + (i < 4 ? ' '+U : ''), cx, cy + 9);
+  });
+  y += 26;
+  const warns = warnings(G, PP);
+  if (warns.length) { heading('Check before you build', 12); warns.forEach(([c,t]) => para('• '+t, 9, c === 'warn' ? WARN : INK)); }
+
+  // sizes used
+  heading('Sizes used', 13);
+  GROUPS.forEach(gr => {
+    room(8); font('helvetica','bold',9); color(CHALK); doc.text(gr.t.toUpperCase(), M, y + 3); y += 5;
+    gr.f.forEach(([k,label,unit]) => {
+      room(5);
+      const v = unit === 'check' ? (P[k] ? 'yes' : 'no') : unit === 'mm' ? f0(PP[k])+' '+U : f1(PP[k])+unit;
+      font('helvetica','normal',9); color(INK); doc.text(label, M + 2, y + 3);
+      font('courier','bold',9); doc.text(v, PW - M, y + 3, {align:'right'}); y += 4.6;
+    });
+    y += 1.5;
+  });
+
+  // views and cut list
+  doc.addPage(); y = M;
+  heading('Front and side views', 15);
+  const front = snapshot('front'), side = snapshot('side');
+  const vw = (CW - 4)/2, vh = vw*0.625;
+  if (front && side) {
+    doc.addImage(front, 'JPEG', M, y, vw, vh); doc.addImage(side, 'JPEG', M + vw + 4, y, vw, vh);
+    font('helvetica','normal',8); color(MUTED); doc.text('Gable end', M, y + vh + 4); doc.text('Long side', M + vw + 4, y + vh + 4);
+    y += vh + 9;
+  }
+  heading('Cut list', 15);
+  const cols = [[M,'Piece'],[M+46,'Qty'],[M+58,'Section '+U],[M+86,'Length '+U],[M+112,'Notes']];
+  font('helvetica','bold',8); color(MUTED); cols.forEach(([x,t]) => doc.text(t.toUpperCase(), x, y + 3)); y += 5; rule(); y -= 2;
+  LIST.forEach(r => {
+    font('helvetica','normal',8);
+    const notes = doc.splitTextToSize(r.note, PW - M - (M+112));
+    const h = Math.max(5, notes.length*3.6) + 2;
+    room(h);
+    font('helvetica','bold',9); color(INK); doc.text(PART[r.id].name, M, y + 3.5);
+    font('courier','normal',9); doc.text(String(r.qty), M+46, y + 3.5); doc.text(f0(r.w)+' × '+f0(r.h), M+58, y + 3.5);
+    font('courier','bold',10); color(CHALK); doc.text(f0(r.len), M+86, y + 3.5);
+    font('helvetica','normal',8); color(MUTED); notes.forEach((l,i) => doc.text(l, M+112, y + 3.5 + i*3.6));
+    y += h; doc.setDrawColor(225,229,225); doc.line(M, y - 1, PW - M, y - 1);
+  });
+  y += 2;
+  para('Lengths are net, end to end. Add joint allowances (tenons) and about '+f0(50)+' '+U+' per piece for trimming when you buy timber.', 8, MUTED);
+
+  // one section per piece
+  for (const r of LIST) {
+    doc.addPage(); y = M;
+    heading(PART[r.id].name, 18);
+    font('courier','bold',13); color(CHALK); doc.text(f0(r.len)+' '+U, M, y + 4);
+    font('helvetica','normal',10); color(MUTED); doc.text(r.qty+' pieces  ·  '+f0(r.w)+' × '+f0(r.h)+' '+U, M + 45, y + 4); y += 9;
+    para(ROLE[r.id] || '', 10, INK);
+    const v = pieceView(r.id, G, PP, 680);
+    for (const [svgStr, cap] of v.draw) {
+      const img = await svgToPng(svgStr, 3);
+      const w = CW, h = CW*img.h/img.w;
+      image(img.url, w, h);
+      para(cap, 8, MUTED);
+    }
+    y += 2;
+    heading('How to cut it', 12);
+    v.steps.forEach((t, i) => para((i+1)+'.  '+t, 10, INK, 0));
+  }
+
+  // covering
+  heading('Roof covering', 15);
+  const side1 = G.rafterLen*G.Lt/1e6;
+  para('Each slope: '+f0(G.rafterLen)+' × '+f0(G.Lt)+' '+U+'. Roof area '+(2*side1).toFixed(2)+' m². Ridge cap '+(G.Lt/1000).toFixed(2)+' m.', 10);
+  if (PP.gauge > 0) { const nb = Math.ceil(G.rafterLen/PP.gauge) + 1; para('Battens: '+(2*nb)+' at '+f0(G.Lt)+' '+U+' ('+(2*nb*G.Lt/1000).toFixed(1)+' m in total).', 10); }
+  y += 3;
+  para('This blueprint works out geometry only. It does not check that the timber sizes carry your wind and rain or snow loads, and it does not design the foundations. Have those checked locally before you build.', 8, MUTED);
+
+  const n = doc.getNumberOfPages();
+  for (let i = 1; i <= n; i++) {
+    doc.setPage(i); font('helvetica','normal',8); color(MUTED);
+    doc.text('Gable Roof Cutter  ·  '+date, M, PH - 8);
+    doc.text('Page '+i+' of '+n, PW - M, PH - 8, {align:'right'});
+  }
+  if (check) return {pages:n, bytes:doc.output('arraybuffer').byteLength, url:doc.output('bloburl')};
+  doc.save('gable-roof-blueprint.pdf');
+}
+window.gableRoofCheck = () => makePdf(true);
+
 /* ---------- wiring ---------- */
 let t3 = 0;
 function update(){
@@ -1163,6 +1408,20 @@ $('tRafters').addEventListener('click', e => { showRafters = !showRafters; e.cur
 $('tBraces').addEventListener('click', e => { showBraces = !showBraces; e.currentTarget.setAttribute('aria-pressed', showBraces); visibility(); });
 $('bpClose').addEventListener('click', () => select(null));
 $('pGo').addEventListener('click', downloadStl);
+$('pdfBtn').addEventListener('click', async e => {
+  const b = e.currentTarget; if (b.disabled) return;
+  b.disabled = true; b.textContent = 'Making PDF…';
+  try { await makePdf(); b.textContent = 'Download PDF'; }
+  catch (err) { b.textContent = 'PDF failed'; console.error(err); setTimeout(() => b.textContent = 'Download PDF', 2500); }
+  b.disabled = false;
+});
+function showUnit(){ document.querySelectorAll('.units button').forEach(b => b.setAttribute('aria-pressed', b.dataset.u === UNIT)); }
+document.querySelectorAll('.units button').forEach(b => b.addEventListener('click', () => {
+  setUnit(b.dataset.u); try { localStorage.setItem('gable-roof-cutter-unit', UNIT); } catch (e) {}
+  showUnit(); buildRail(); update();
+}));
+try { setUnit(localStorage.getItem('gable-roof-cutter-unit') || 'mm'); } catch (e) {}
+showUnit();
 ['pScale','pMode','pBed'].forEach(id => $(id).addEventListener('input', printInfo));
 window.addEventListener('resize', () => renderBlue());
 $('tMax').addEventListener('click', () => setMax(!$('viewer').classList.contains('max')));

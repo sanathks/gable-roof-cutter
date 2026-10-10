@@ -215,3 +215,30 @@ test('angles drawn on the blueprints are measured from the shapes and match the 
   for (const over of [{ pitch: 25 }, { pitch: 52.5, bAng: 35 }, { hr: 80 }, { hr: 0 }, { pitch: 30, hr: 20, bAng: 60 }])
     { const s = setup(over); checkDrawnAngles(s.p, s.g); }
 });
+
+test('mm, cm and inch display read back to the true length', () => {
+  // reads a displayed value back into mm: "2,102", "210.2", "82 3/4", "3/8"
+  const back = (txt, u) => {
+    const t = txt.replace(/,/g, '');
+    if (u === 'in') { const m = t.match(/^(-?)(?:(\d+) )?(?:(\d+)\/(\d+))?$|^(-?)(\d+)$/);
+      if (!m) throw new Error('bad inch text ' + txt);
+      const v = m[6] !== undefined ? +m[6] : (+(m[2] || 0) + (m[3] ? m[3] / m[4] : 0));
+      return v * 25.4 * ((m[1] || m[5]) === '-' ? -1 : 1); }
+    return +t * (u === 'cm' ? 10 : 1);
+  };
+  let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const vals = [0, 1, 12.7, 25.4, 2101.71, 1514.27, 108.65, 3802.004, 615.18].concat(Array.from({ length: 300 }, () => rnd() * 6000));
+  for (const u of ['mm', 'cm', 'in']) {
+    R.setUnit(u);
+    assert.equal(R.UL(), u);
+    for (const v of vals) {
+      const err = Math.abs(back(R.f0(v), u) - v), tol = { mm: 0.5, cm: 0.5, in: 25.4 / 32 }[u] + 1e-9;
+      assert.ok(err <= tol, `${v} mm shown as "${R.f0(v)} ${u}" is off by ${err.toFixed(3)} mm`);
+    }
+  }
+  R.setUnit('in');
+  console.log('rafter', R.f0(2101.71), 'in | birdsmouth mark', R.f0(1514.27), 'in | measure-down', R.f0(108.65), 'in');
+  R.setUnit('cm');
+  console.log('rafter', R.f0(2101.71), 'cm | birdsmouth mark', R.f0(1514.27), 'cm | measure-down', R.f0(108.65), 'cm');
+  R.setUnit('mm');
+});
