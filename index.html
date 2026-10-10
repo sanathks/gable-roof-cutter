@@ -250,7 +250,8 @@ tfoot td{font-weight:600;border-bottom:0}
       <div id="view3d"></div>
       <div class="dimlabel" id="dimlabel" hidden></div>
       <div class="view-tools">
-        <div class="showrow" id="showRow" role="group" aria-label="Show pieces"></div>
+        <button type="button" id="tRafters" aria-pressed="true">Rafters</button>
+        <button type="button" id="tBraces" aria-pressed="true">Braces</button>
         <button type="button" id="tView">Reset view</button>
         <button type="button" id="tFocus" class="primary" hidden>Show all</button>
         <button type="button" id="tMax" class="max-btn" aria-pressed="false">Full screen</button>
@@ -1017,19 +1018,16 @@ const GROUPS3D = [
   {id:'ridge', name:'Ridge beam', parts:['ridge']}, {id:'rafters', name:'Rafters', parts:['rafC','rafF']},
   {id:'braces', name:'Braces', parts:['braceT','braceL']}
 ];
-// tapping a group button lights that group up and turns everything else see-through
+// Rafters and Braces buttons show or hide those pieces; double-tap focuses one piece
 const focusGroups = new Set();
 const groupOf = part => (GROUPS3D.find(gr => gr.parts.includes(part)) || {}).id;
+const hiddenGroups = new Set();
+const isHidden = part => hiddenGroups.has(groupOf(part));
 function buildShowRow(){
-  const row = $('showRow');
-  row.innerHTML = '<button type="button" id="showAll" aria-pressed="'+(!focusGroups.size && !focusKey)+'">All</button>' + GROUPS3D.map(gr =>
-    '<button type="button" data-g="'+gr.id+'" aria-pressed="'+focusGroups.has(gr.id)+'"><i style="background:'+PART[gr.parts[0]].css+'"></i>'+gr.name+'</button>').join('');
-  row.querySelectorAll('[data-g]').forEach(b => b.addEventListener('click', () => {
-    const id = b.dataset.g; focusGroups.has(id) ? focusGroups.delete(id) : focusGroups.add(id);
-    focusKey = null; applyFocus(); highlight(); buildShowRow(); renderPick();
-  }));
-  $('showAll').addEventListener('click', exitFocus);
+  $('tRafters').setAttribute('aria-pressed', !hiddenGroups.has('rafters'));
+  $('tBraces').setAttribute('aria-pressed', !hiddenGroups.has('braces'));
 }
+function toggleGroup(id){ hiddenGroups.has(id) ? hiddenGroups.delete(id) : hiddenGroups.add(id); buildShowRow(); visibility(); }
 function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 
 function init3d(){
@@ -1170,11 +1168,11 @@ function visibility(){
   if (!model) return;
   model.children.forEach(o => {
     const pt = o.userData.part;
-    o.visible = true;
+    o.visible = !isHidden(pt);
   });
   if (dimObj && dimObj.userData.part) {
     const pt = dimObj.userData.part;
-    void pt;
+    if (isHidden(pt)) clearDim();
   }
 }
 function highlight(){
@@ -1492,6 +1490,8 @@ $('mSizes').addEventListener('click', () => openSizes(true));
 $('mCuts').addEventListener('click', () => goTo('pieceCard'));
 $('copy').addEventListener('click', copyList);
 buildShowRow();
+$('tRafters').addEventListener('click', () => toggleGroup('rafters'));
+$('tBraces').addEventListener('click', () => toggleGroup('braces'));
 // closing hides the blueprint but keeps the piece selected and measured
 $('bpClose').addEventListener('click', () => { bpHidden = true; renderBlue(); renderPick(); });
 $('bpMore').addEventListener('click', () => { bpFull = !bpFull; renderBlue(); $('blueprint').scrollTop = 0; });
