@@ -68,6 +68,11 @@ button.primary{background:var(--chalk);border-color:var(--chalk);color:var(--pan
 .view-tools{position:absolute;top:10px;left:10px;right:10px;display:flex;flex-wrap:wrap;gap:6px;pointer-events:none}
 .view-tools button{background:var(--panel);font-size:13px;padding:5px 11px;pointer-events:auto}
 .view-tools .max-btn{margin-left:auto}
+.showrow{order:3;flex-basis:100%;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;pointer-events:auto;padding-bottom:2px}
+.showrow::-webkit-scrollbar{display:none}
+.showrow button{flex:none;border-radius:999px;font-size:12px;padding:4px 10px;display:inline-flex;align-items:center;gap:6px}
+.showrow button i{width:8px;height:8px;border-radius:2px;display:inline-block}
+.showrow button[aria-pressed="false"]{opacity:.55;text-decoration:line-through}
 .viewer.max{position:fixed;inset:0;z-index:50;height:auto;min-height:0;border-radius:0;border:0}
 .viewer.max .view-tools{top:calc(10px + env(safe-area-inset-top,0px));left:calc(10px + env(safe-area-inset-left,0px));right:calc(10px + env(safe-area-inset-right,0px))}
 .viewer.max .pick{bottom:calc(10px + env(safe-area-inset-bottom,0px))}
@@ -244,8 +249,7 @@ tfoot td{font-weight:600;border-bottom:0}
       <div id="view3d"></div>
       <div class="dimlabel" id="dimlabel" hidden></div>
       <div class="view-tools">
-        <button type="button" id="tRafters" aria-pressed="true">Rafters</button>
-        <button type="button" id="tBraces" aria-pressed="true">Braces</button>
+        <div class="showrow" id="showRow" role="group" aria-label="Show pieces"></div>
         <button type="button" id="tView">Reset view</button>
         <button type="button" id="tMax" class="max-btn" aria-pressed="false">Full screen</button>
       </div>
@@ -1004,7 +1008,25 @@ function copyList(){
 /* ---------- 3D ---------- */
 const S = 0.001;
 let renderer, scene, camera, controls, model, grid, MAT = {}, firstFrame = true, dimObj = null, dimMid = null;
-let showRafters = true, showBraces = true;
+// piece groups that can be shown or hidden one by one
+const GROUPS3D = [
+  {id:'posts', name:'Posts', parts:['posts']}, {id:'plates', name:'Eaves beams', parts:['plates']},
+  {id:'ties', name:'Cross beams', parts:['ties']}, {id:'king', name:'Ridge posts', parts:['king']},
+  {id:'ridge', name:'Ridge beam', parts:['ridge']}, {id:'rafters', name:'Rafters', parts:['rafC','rafF']},
+  {id:'braces', name:'Braces', parts:['braceT','braceL']}
+];
+const hiddenGroups = new Set();
+const isHidden = part => GROUPS3D.some(gr => hiddenGroups.has(gr.id) && gr.parts.includes(part));
+function buildShowRow(){
+  const row = $('showRow');
+  row.innerHTML = '<button type="button" id="showAll">All</button>' + GROUPS3D.map(gr =>
+    '<button type="button" data-g="'+gr.id+'" aria-pressed="'+!hiddenGroups.has(gr.id)+'"><i style="background:'+PART[gr.parts[0]].css+'"></i>'+gr.name+'</button>').join('');
+  row.querySelectorAll('[data-g]').forEach(b => b.addEventListener('click', () => {
+    const id = b.dataset.g; hiddenGroups.has(id) ? hiddenGroups.delete(id) : hiddenGroups.add(id);
+    buildShowRow(); visibility();
+  }));
+  $('showAll').addEventListener('click', () => { hiddenGroups.clear(); buildShowRow(); visibility(); });
+}
 function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 
 function init3d(){
@@ -1139,12 +1161,11 @@ function visibility(){
   if (!model) return;
   model.children.forEach(o => {
     const pt = o.userData.part;
-    o.visible = !((pt==='rafC'||pt==='rafF') && !showRafters) && !((pt==='braceT'||pt==='braceL') && !showBraces);
+    o.visible = !isHidden(pt);
   });
   if (dimObj && dimObj.userData.part) {
     const pt = dimObj.userData.part;
-    const hidden = ((pt==='rafC'||pt==='rafF') && !showRafters) || ((pt==='braceT'||pt==='braceL') && !showBraces);
-    if (hidden) clearDim();
+    if (isHidden(pt)) clearDim();
   }
 }
 function highlight(){
@@ -1428,8 +1449,7 @@ $('railDone').addEventListener('click', () => openSizes(false));
 $('mSizes').addEventListener('click', () => openSizes(true));
 $('mCuts').addEventListener('click', () => goTo('pieceCard'));
 $('copy').addEventListener('click', copyList);
-$('tRafters').addEventListener('click', e => { showRafters = !showRafters; e.currentTarget.setAttribute('aria-pressed', showRafters); visibility(); });
-$('tBraces').addEventListener('click', e => { showBraces = !showBraces; e.currentTarget.setAttribute('aria-pressed', showBraces); visibility(); });
+buildShowRow();
 // closing hides the blueprint but keeps the piece selected and measured
 $('bpClose').addEventListener('click', () => { bpHidden = true; renderBlue(); renderPick(); });
 $('bpMore').addEventListener('click', () => { bpFull = !bpFull; renderBlue(); $('blueprint').scrollTop = 0; });
