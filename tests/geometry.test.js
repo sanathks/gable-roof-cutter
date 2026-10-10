@@ -242,3 +242,21 @@ test('mm, cm and inch display read back to the true length', () => {
   console.log('rafter', R.f0(2101.71), 'cm | birdsmouth mark', R.f0(1514.27), 'cm | measure-down', R.f0(108.65), 'cm');
   R.setUnit('mm');
 });
+
+test('eaves beam and cross beam halving notches lock together at every post', () => {
+  for (const over of [{}, { b: 150, bh: 200 }, { Og: 0 }, { W: 4000, Lc: 3000 }]) {
+    const { p, g } = setup(over), pr = R.printProfiles(g, p);
+    // notch floors in the eaves beam (top) and ends of the cross beam (bottom)
+    const plateFloor = Math.min(...pr.plate.map(q => q[1]).filter(v => v > 0));
+    const tieStep = Math.max(...pr.tie.map(q => q[1]).filter(v => v < p.bh));
+    near(plateFloor + (p.bh - tieStep), p.bh, 'the two notch depths add up to the beam height, so the tops are flush');
+    const plateNotches = []; for (let i = 0; i < pr.plate.length; i++) { const [a, b] = [pr.plate[i], pr.plate[(i + 1) % pr.plate.length]]; if (a[1] === plateFloor && b[1] === plateFloor) plateNotches.push([Math.min(a[0], b[0]), Math.max(a[0], b[0])]); }
+    assert.equal(plateNotches.length, 2, 'one notch over each post');
+    plateNotches.forEach(([x0, x1]) => near(x1 - x0, p.b, 'eaves beam notch is as wide as the cross beam'));
+    const postsFromEnd = [g.Lt / 2 - g.frameZ - p.b / 2, g.Lt / 2 + g.frameZ - p.b / 2];
+    plateNotches.sort((a, b) => a[0] - b[0]).forEach(([x0], i) => near(x0, postsFromEnd[i], 'notch sits over the post'));
+    const tieEnds = pr.tie.filter(q => q[1] === tieStep).map(q => q[0]).sort((a, b) => a - b);
+    near(tieEnds[1] - tieEnds[0], p.b, 'cross beam end notch is as long as the eaves beam is wide');
+    near(pr.T, p.W + 2 * p.b, 'cross beam runs over both eaves beams');
+  }
+});

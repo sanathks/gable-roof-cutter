@@ -1073,9 +1073,11 @@ function build3d(g,p){
   const px = p.W/2 + p.b/2, off = 90;
   [-1,1].forEach(sx => [-1,1].forEach(sz => box('posts', p.b, p.H, p.b, sx*px, p.H/2, sz*g.frameZ,
     [[sx*(px+p.b/2+off), 0, sz*g.frameZ],[sx*(px+p.b/2+off), p.H, sz*g.frameZ]])));
-  [-1,1].forEach(sx => box('plates', p.b, p.bh, g.Lt, sx*px, p.H + p.bh/2, 0,
+  // eaves beams and cross beams use the same notched outlines as the cut drawings, so they lock together at the post tops
+  const pr = printProfiles(g, p);
+  [-1,1].forEach(sx => ext('plates', pr.plate.map(([u,v]) => [u - g.Lt/2, v + p.H]), p.b, [(sx*px + p.b/2)*S, 0, 0], -Math.PI/2,
     [[sx*(px+p.b/2+off), p.H+p.bh/2, -g.Lt/2],[sx*(px+p.b/2+off), p.H+p.bh/2, g.Lt/2]]));
-  [-1,1].forEach(sz => box('ties', p.W, p.bh, p.b, 0, p.H + p.bh/2, sz*g.frameZ,
+  [-1,1].forEach(sz => ext('ties', pr.tie.map(([x,y]) => [x - pr.T/2, y + p.H]), p.b, [0, 0, (sz*g.frameZ - p.b/2)*S], 0,
     [[-(p.W/2+p.b), p.H-off, sz*g.frameZ],[p.W/2+p.b, p.H-off, sz*g.frameZ]]));
   if (g.kp > 0) [-1,1].forEach(sz => box('king', p.b, g.kp, p.b, 0, g.z0 + g.kp/2, sz*g.frameZ,
     [[p.b/2+off, g.z0, sz*g.frameZ],[p.b/2+off, g.z0+g.kp, sz*g.frameZ]]));
