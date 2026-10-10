@@ -297,3 +297,34 @@ test('roof triangle: run, rise and rafter line obey Pythagoras and add up to the
   console.log('run', t.run.toFixed(1), 'rise', t.rise.toFixed(1), 'line', t.line.toFixed(1), '| with overhang', t.runAll.toFixed(1), t.riseAll.toFixed(1), t.lineAll.toFixed(1),
     '| ridge', t.beamTop.toFixed(1), '+', t.measureDown.toFixed(1), '+', t.rise.toFixed(1), '=', t.ridge.toFixed(1));
 });
+
+test('tapping a size highlights a line in the model exactly that long, or an arc of exactly that angle', () => {
+  const lengths = ['W', 'Lc', 'H', 'b', 'bh', 'embed', 'Oe', 'Og', 'ridgeW', 'ridgeH', 'rt', 'rtf', 'rd', 'hb', 'hr', 'bDrop', 'be', 'bt'];
+  const len3 = ([A, B]) => Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]);
+  for (const over of [{}, { embed: 400, pitch: 30 }, { rtf: 90, bAng: 35, ridgeNotch: false }]) {
+    const { p, g } = setup(over);
+    lengths.forEach(k => {
+      const a = R.annoFor(k, g, p);
+      assert.ok(a, `no highlight for ${k}`);
+      if (p[k] > 0) near(len3(a.main), p[k], `${k} line length`, 1e-6);
+      else assert.equal(a.main, null, `${k} is 0, so no line`);
+    });
+    const arcDeg = a => Math.abs(a.arc.a1 - a.arc.a0) * 180 / Math.PI;
+    near(arcDeg(R.annoFor('pitch', g, p)), p.pitch, 'pitch arc');
+    near(arcDeg(R.annoFor('bAng', g, p)), p.bAng, 'brace angle arc');
+    const sp = R.annoFor('maxSp', g, p);
+    near(len3(sp.main), sp.actual, 'spacing line is the actual spacing');
+    assert.ok(sp.actual <= p.maxSp + 1e-9, 'actual spacing within the maximum');
+    // the lines sit on the real pieces
+    const hb = R.annoFor('hb', g, p).main;
+    near(hb[1][1], p.H + p.bh, 'birdsmouth line ends on top of the eaves beam'); near(hb[0][1], g.prof[3][1], 'and starts at the heel');
+    const rd = R.annoFor('rd', g, p).main;
+    near(lineDist([rd[1][0], rd[1][1]], g.prof[2], g.prof[3]), 0, 'rafter depth line ends on the bottom edge', 1e-6);
+    const oe = R.annoFor('Oe', g, p).main;
+    near(oe[0][0], p.W / 2 + p.b, 'overhang starts at the eaves beam face'); near(oe[1][0], g.prof[1][0], 'and ends at the tail');
+    const og = R.annoFor('Og', g, p).main;
+    near(og[0][2], p.Lc / 2 + p.b, 'gable overhang starts at the post face'); near(og[1][2], g.Lt / 2, 'and ends at the roof end');
+    const pv = R.annoFor('pitch', g, p).arc.V;
+    near(pv[1], g.zT(g.xo), 'pitch arc sits on the rafter top edge above the beam');
+  }
+});

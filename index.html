@@ -565,6 +565,58 @@ function prism(pts2, t, map, out){
 }
 const rectP = (x0,y0,x1,y1) => [[x0,y0],[x1,y0],[x1,y1],[x0,y1]];
 // the roof triangle on the rafter's top edge: run (outside of eaves beam to centre), rise, and the rafter line
+// what a size on the left looks like in the model: a measuring line (main) or an angle arc, the pieces it
+// belongs to, a view that shows it, and where the label goes
+function annoFor(k, g, p){
+  const px = p.W/2 + p.b/2, fz = g.frameZ, gz = g.Lt/2 + 20, side = p.W/2 + p.b + 60, H = p.H, a = g.a;
+  const mid = (A,B) => [(A[0]+B[0])/2, (A[1]+B[1])/2, (A[2]+B[2])/2];
+  const line = (A, B, groups, view, extra) => Object.assign({main:[A,B], at:mid(A,B), groups, view}, extra || {});
+  const commons = g.raf.filter(r => !r.f), front = g.raf[g.raf.length-1], fw = front.f ? p.rtf : p.rt;
+  const x1 = g.runX - 150, T = [x1, g.zT(x1)];
+  const O1 = [p.W/2, H - p.bDrop], O2 = [p.W/2 - g.bc, H], bz = fz + p.bt/2 + 15;
+  switch (k) {
+    case 'W': return line([-p.W/2, H*0.5, fz + p.b/2 + 20], [p.W/2, H*0.5, fz + p.b/2 + 20], ['posts'], 'front');
+    case 'Lc': return line([side, H*0.5, -p.Lc/2], [side, H*0.5, p.Lc/2], ['posts'], 'side');
+    case 'H': return line([side, 0, fz], [side, H, fz], ['posts'], 'iso');
+    case 'b': return line([px - p.b/2, H*0.35, fz + p.b/2 + 20], [px + p.b/2, H*0.35, fz + p.b/2 + 20], ['posts'], 'iso');
+    case 'bh': return line([side, H, g.Lt/2 - 30], [side, H + p.bh, g.Lt/2 - 30], ['plates','ties'], 'iso');
+    case 'embed': return p.embed > 0 ? line([side, -p.embed, fz], [side, 0, fz], ['posts'], 'iso') : {main:null, at:[side, 0, fz], groups:['posts'], view:'iso'};
+    case 'pitch': {
+      const V = [g.xo, g.zT(g.xo), gz], r = 450;
+      return {main:null, segs:[[V, [g.xo - 750, V[1], gz]]], arc:{V, a0:Math.PI - a, a1:Math.PI, r},
+        at:[V[0] - (r+170)*Math.cos(a/2), V[1] + (r+170)*Math.sin(a/2), gz], groups:['rafters'], view:'front'};
+    }
+    case 'Oe': return line([g.xo, g.zU(g.runX) - 80, gz], [g.runX, g.zU(g.runX) - 80, gz], ['rafters','plates'], 'front');
+    case 'Og': return line([side, H + p.bh/2, p.Lc/2 + p.b], [side, H + p.bh/2, g.Lt/2], ['plates','posts'], 'side');
+    case 'ridgeW': return line([-p.ridgeW/2, g.zR - p.ridgeH - 60, gz], [p.ridgeW/2, g.zR - p.ridgeH - 60, gz], ['ridge'], 'front');
+    case 'ridgeH': return line([p.ridgeW/2 + 60, g.zR - p.ridgeH, gz], [p.ridgeW/2 + 60, g.zR, gz], ['ridge'], 'front');
+    case 'rt': { const c = commons.length ? commons[commons.length-1] : front;
+      return line([x1, T[1] + 60, c.z - p.rt/2], [x1, T[1] + 60, c.z + p.rt/2], ['rafters'], 'iso'); }
+    case 'rtf': return line([x1, T[1] + 60, fz - p.rtf/2], [x1, T[1] + 60, fz + p.rtf/2], ['rafters'], 'iso');
+    case 'rd': { const zz = front.z + fw/2 + 20;
+      return line([T[0], T[1], zz], [T[0] - p.rd*Math.sin(a), T[1] - p.rd*Math.cos(a), zz], ['rafters'], 'front'); }
+    case 'maxSp': { let best = null;
+      for (let i = 1; i < g.raf.length; i++) { const d = g.raf[i].z - g.raf[i-1].z; if (!best || d > best.d) best = {d, z0:g.raf[i-1].z, z1:g.raf[i].z}; }
+      return line([x1, T[1] + 60, best.z0], [x1, T[1] + 60, best.z1], ['rafters'], 'iso', {actual:best.d}); }
+    case 'hb': return line([g.xo + 25, g.z0 - p.hb, gz], [g.xo + 25, g.z0, gz], ['rafters','plates'], 'front');
+    case 'hr': case 'ridgeNotch': {
+      const rw2 = p.ridgeW/2;
+      return p.hr > 0 ? line([rw2 + 25, g.zU(rw2), gz], [rw2 + 25, g.zR, gz], ['rafters','ridge'], 'front')
+        : {main:null, at:[rw2, g.zR, gz], groups:['rafters','ridge'], view:'front'}; }
+    case 'bAng': {
+      const V = [O1[0], O1[1], bz];
+      return {main:null, segs:[[V, [O2[0], O2[1], bz]], [V, [O1[0], O1[1] + 320, bz]]], arc:{V, a0:Math.PI/2, a1:Math.PI/2 + p.bAng*Math.PI/180, r:240},
+        at:[V[0] - 330*Math.sin(p.bAng*Math.PI/360), V[1] + 330*Math.cos(p.bAng*Math.PI/360), bz], groups:['braces','posts'], view:'front'};
+    }
+    case 'bDrop': return line([p.W/2 - 30, H - p.bDrop, fz + p.b/2 + 20], [p.W/2 - 30, H, fz + p.b/2 + 20], ['braces','posts'], 'front');
+    case 'be': { const M = [(O1[0]+O2[0])/2, (O1[1]+O2[1])/2], n = [p.bDrop/g.bL, g.bc/g.bL];
+      return line([M[0], M[1], bz], [M[0] + p.be*n[0], M[1] + p.be*n[1], bz], ['braces'], 'front'); }
+    case 'bt': { const M = [(O1[0]+O2[0])/2, (O1[1]+O2[1])/2];
+      return line([M[0], M[1] - 40, fz - p.bt/2], [M[0], M[1] - 40, fz + p.bt/2], ['braces'], 'iso'); }
+    case 'braceT': case 'braceL': return {main:null, at:[O1[0], O1[1], bz], groups:['braces'], view:'iso'};
+  }
+  return null;
+}
 function triangleFacts(g,p){
   const run = g.xo, rise = g.zT(0) - g.zT(g.xo), line = Math.hypot(run, rise);
   const runAll = g.runX, riseAll = g.zT(0) - g.zT(g.runX), lineAll = Math.hypot(runAll, riseAll);
@@ -849,6 +901,7 @@ function buildRail(){
         d.innerHTML = '<input type="checkbox" id="in-'+k+'"'+(P[k]?' checked':'')+'> '+label;
         fs.appendChild(d);
         d.querySelector('input').addEventListener('change', e => { P[k]=e.target.checked; save(); update(); });
+        d.addEventListener('click', () => showAnno(k, true));
         return;
       }
       const d = document.createElement('div'); d.className='field'; d.dataset.k = k;
@@ -856,6 +909,7 @@ function buildRail(){
       const shown = isLen ? Math.round(P[k]/f*1000)/1000 : P[k];
       d.innerHTML = '<label for="in-'+k+'">'+label+'</label><div class="inbox"><input id="in-'+k+'" type="number" inputmode="decimal" step="any" value="'+shown+'"><span>'+(isLen ? UL() : unit)+'</span></div>'+(hint?'<small>'+hint+'</small>':'');
       fs.appendChild(d);
+      d.addEventListener('focusin', () => showAnno(k, true));
       d.querySelector('input').addEventListener('input', e => {
         const v = parseFloat(e.target.value);
         if (!isFinite(v)) return;
@@ -1114,6 +1168,7 @@ function init3d(){
   camera = new THREE.PerspectiveCamera(38, 1, 0.05, 200);
   controls = new THREE.OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true; controls.dampingFactor = 0.12;
+  controls.addEventListener('start', () => { camAnim++; });
   controls.maxPolarAngle = Math.PI*0.495;
   scene.add(new THREE.HemisphereLight(0xffffff, 0x80766a, 0.8));
   const sun = new THREE.DirectionalLight(0xffffff, 0.7); sun.position.set(4, 9, 6); scene.add(sun);
@@ -1285,7 +1340,7 @@ function focusOn(mesh){
   const d = c.clone().sub(controls.target);
   controls.target.add(d); camera.position.add(d); controls.update();
 }
-function exitFocus(){ focusKey = null; focusGroups.clear(); applyFocus(); highlight(); buildShowRow(); renderPick(); }
+function exitFocus(){ annoKey = null; clearDim(); focusKey = null; focusGroups.clear(); applyFocus(); highlight(); buildShowRow(); renderPick(); }
 
 // dimension line drawn on the tapped piece, with the cut length as a floating label
 function clearDim(){
@@ -1307,6 +1362,62 @@ function showDim(mesh){
   const r = LIST.find(x => x.id === mesh.userData.part);
   $('dimlabel').textContent = r ? PART[r.id].name+' · '+f0(r.len)+' '+UL() : '';
   $('dimlabel').hidden = !r;
+}
+let annoKey = null, camAnim = 0;
+function annoLabel(k){
+  for (const gr of GROUPS) for (const [key, label, unit] of gr.f) if (key === k) {
+    if (unit === 'check') return label + (PP[k] ? ': on' : ': off');
+    const v = unit === 'mm' ? f0(PP[k])+' '+UL() : f1(PP[k])+unit;
+    if (k === 'maxSp') { const a = annoFor(k, G, PP); return label+' '+v+' (actual '+f0(a.actual)+')'; }
+    return label+' '+v;
+  }
+  return '';
+}
+function showAnno(k, move){
+  if (!scene || !G || !model) return;
+  const a = annoFor(k, G, PP);
+  annoKey = a ? k : null;
+  if (!a) return;
+  selected = null; focusKey = null; focusGroups.clear(); a.groups.forEach(x => { focusGroups.add(x); hiddenGroups.delete(x); });
+  buildShowRow(); visibility(); applyFocus(); highlight(); renderPick(); renderBlue(); markRelated();
+  document.querySelectorAll('#cutlist tbody tr').forEach(tr => tr.classList.remove('sel'));
+  clearDim();
+  const V3 = q => new THREE.Vector3(q[0]*S, q[1]*S, q[2]*S), pts = [];
+  if (a.main) {
+    const A = V3(a.main[0]), B = V3(a.main[1]), dir = B.clone().sub(A).normalize();
+    let t = new THREE.Vector3(0,1,0).cross(dir); if (t.length() < 0.1) t = new THREE.Vector3(1,0,0).cross(dir); t.normalize().multiplyScalar(0.05);
+    pts.push(A, B, A.clone().add(t), A.clone().sub(t), B.clone().add(t), B.clone().sub(t));
+  }
+  (a.segs || []).forEach(([A,B]) => pts.push(V3(A), V3(B)));
+  if (a.arc) {
+    const {V, a0, a1, r} = a.arc, n = 28;
+    for (let i = 0; i < n; i++) {
+      const t0 = a0 + (a1-a0)*i/n, t1 = a0 + (a1-a0)*(i+1)/n;
+      pts.push(V3([V[0]+r*Math.cos(t0), V[1]+r*Math.sin(t0), V[2]]), V3([V[0]+r*Math.cos(t1), V[1]+r*Math.sin(t1), V[2]]));
+    }
+  }
+  if (pts.length) {
+    dimObj = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({color:new THREE.Color(css('--chalk')||'#1d5bd0'), depthTest:false, transparent:true}));
+    dimObj.renderOrder = 10; scene.add(dimObj);
+  }
+  dimMid = V3(a.at);
+  $('dimlabel').textContent = annoLabel(k); $('dimlabel').hidden = false;
+  if (move) turnTo(a.view, dimMid);
+}
+// glide the camera round to a view that shows the measurement, keeping roughly the same distance
+function turnTo(view, target){
+  const dirs = {front:[0.35,0.3,1], side:[1,0.3,0.35], iso:[0.9,0.6,1]}, d = new THREE.Vector3(...(dirs[view] || dirs.iso)).normalize();
+  const span = Math.max(G.Lt, 2*G.runX, G.ridgeTop)*S;
+  const dist = Math.min(Math.max(camera.position.distanceTo(controls.target), span*1.1), span*2.2);
+  const p0 = camera.position.clone(), t0 = controls.target.clone();
+  const p1 = target.clone().add(d.multiplyScalar(dist)), t1 = target.clone();
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches, start = performance.now(), my = ++camAnim;
+  (function step(now){
+    if (my !== camAnim) return;
+    const k = reduce ? 1 : Math.min(1, (now - start)/550), e = k < 0.5 ? 2*k*k : 1 - Math.pow(-2*k + 2, 2)/2;
+    camera.position.lerpVectors(p0, p1, e); controls.target.lerpVectors(t0, t1, e); controls.update();
+    if (k < 1) requestAnimationFrame(step);
+  })(start);
 }
 function placeLabel(){
   if (!dimMid) return;
@@ -1331,6 +1442,7 @@ function markRelated(){
   }
 }
 function select(part, mesh, byUser){
+  if (part) annoKey = null;
   if (byUser && part) { bpHidden = false; if (part !== selected) bpFull = false; }
   selected = part;
   if (part) shown = part;
@@ -1553,7 +1665,7 @@ function update(){
   G = g; PP = p;
   render(g,p);
   printInfo();
-  clearTimeout(t3); t3 = setTimeout(() => { build3d(g,p); if (selected) select(selected); }, 40);
+  clearTimeout(t3); t3 = setTimeout(() => { build3d(g,p); if (annoKey) showAnno(annoKey, false); else if (selected) select(selected); }, 40);
 }
 function resetAll(){ P = Object.assign({}, DEF); save(); buildRail(); firstFrame = true; update(); }
 function openSizes(open){
