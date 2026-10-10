@@ -192,3 +192,26 @@ test('400 random roofs keep every rule', () => {
     } catch (e) { e.message = `random roof #${i} ${JSON.stringify(over)}\n${e.message}`; throw e; }
   }
 });
+
+// reads the angle labels out of a drawing, in the order they are drawn
+const anglesIn = svg => [...svg.matchAll(/class="angt"[^>]*>([\d.]+)°</g)].map(m => +m[1]);
+function checkDrawnAngles(p, g) {
+  const [full, eaves, ridge] = R.rafterSVGs(g, p, 360);
+  const cut = 90 - p.pitch, r1 = v => Math.round(v * 10) / 10;
+  assert.deepEqual(anglesIn(full), [r1(cut), r1(cut)], 'ridge and tail cut angles on the whole rafter');
+  assert.deepEqual(anglesIn(eaves), [90, r1(cut), r1(p.pitch)], 'birdsmouth corners: square, plumb line, seat');
+  if (p.hr > 0) {
+    const toRidgeCut = g.prof.length <= 9;      // seat runs all the way to the ridge cut
+    assert.deepEqual(anglesIn(ridge), [r1(cut), 90, r1(cut), toRidgeCut ? 90 : r1(p.pitch)], 'ridge notch corners');
+  } else assert.equal(ridge, null);
+  const brace = R.braceSVG(g, p, 360);
+  assert.deepEqual(anglesIn(brace), [r1(p.bAng), r1(90 - p.bAng)], 'brace end angles');
+}
+test('angles drawn on the blueprints are measured from the shapes and match the cuts', () => {
+  const { p, g } = setup();
+  checkDrawnAngles(p, g);
+  console.log('starting sizes:', 'rafter', anglesIn(R.rafterSVGs(g, p, 360)[0]), 'birdsmouth', anglesIn(R.rafterSVGs(g, p, 360)[1]),
+    'ridge notch', anglesIn(R.rafterSVGs(g, p, 360)[2]), 'brace', anglesIn(R.braceSVG(g, p, 360)));
+  for (const over of [{ pitch: 25 }, { pitch: 52.5, bAng: 35 }, { hr: 80 }, { hr: 0 }, { pitch: 30, hr: 20, bAng: 60 }])
+    { const s = setup(over); checkDrawnAngles(s.p, s.g); }
+});
