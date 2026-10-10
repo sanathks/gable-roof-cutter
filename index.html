@@ -72,7 +72,7 @@ button.primary{background:var(--chalk);border-color:var(--chalk);color:var(--pan
 .showrow::-webkit-scrollbar{display:none}
 .showrow button{flex:none;border-radius:999px;font-size:12px;padding:4px 10px;display:inline-flex;align-items:center;gap:6px}
 .showrow button i{width:8px;height:8px;border-radius:2px;display:inline-block}
-.showrow button[aria-pressed="false"]{opacity:.55;text-decoration:line-through}
+.showrow button[aria-pressed="true"]{background:var(--chalk);border-color:var(--chalk);color:var(--panel)}
 .viewer.max{position:fixed;inset:0;z-index:50;height:auto;min-height:0;border-radius:0;border:0}
 .viewer.max .view-tools{top:calc(10px + env(safe-area-inset-top,0px));left:calc(10px + env(safe-area-inset-left,0px));right:calc(10px + env(safe-area-inset-right,0px))}
 .viewer.max .pick{bottom:calc(10px + env(safe-area-inset-bottom,0px))}
@@ -251,7 +251,7 @@ tfoot td{font-weight:600;border-bottom:0}
       <div class="view-tools">
         <div class="showrow" id="showRow" role="group" aria-label="Show pieces"></div>
         <button type="button" id="tView">Reset view</button>
-        <button type="button" id="tFocus" class="primary" hidden>Exit focus</button>
+        <button type="button" id="tFocus" class="primary" hidden>Show all</button>
         <button type="button" id="tMax" class="max-btn" aria-pressed="false">Full screen</button>
       </div>
       <div class="pick" id="pick"></div>
@@ -1016,17 +1016,18 @@ const GROUPS3D = [
   {id:'ridge', name:'Ridge beam', parts:['ridge']}, {id:'rafters', name:'Rafters', parts:['rafC','rafF']},
   {id:'braces', name:'Braces', parts:['braceT','braceL']}
 ];
-const hiddenGroups = new Set();
-const isHidden = part => GROUPS3D.some(gr => hiddenGroups.has(gr.id) && gr.parts.includes(part));
+// tapping a group button lights that group up and turns everything else see-through
+const focusGroups = new Set();
+const groupOf = part => (GROUPS3D.find(gr => gr.parts.includes(part)) || {}).id;
 function buildShowRow(){
   const row = $('showRow');
-  row.innerHTML = '<button type="button" id="showAll">All</button>' + GROUPS3D.map(gr =>
-    '<button type="button" data-g="'+gr.id+'" aria-pressed="'+!hiddenGroups.has(gr.id)+'"><i style="background:'+PART[gr.parts[0]].css+'"></i>'+gr.name+'</button>').join('');
+  row.innerHTML = '<button type="button" id="showAll" aria-pressed="'+(!focusGroups.size && !focusKey)+'">All</button>' + GROUPS3D.map(gr =>
+    '<button type="button" data-g="'+gr.id+'" aria-pressed="'+focusGroups.has(gr.id)+'"><i style="background:'+PART[gr.parts[0]].css+'"></i>'+gr.name+'</button>').join('');
   row.querySelectorAll('[data-g]').forEach(b => b.addEventListener('click', () => {
-    const id = b.dataset.g; hiddenGroups.has(id) ? hiddenGroups.delete(id) : hiddenGroups.add(id);
-    buildShowRow(); visibility();
+    const id = b.dataset.g; focusGroups.has(id) ? focusGroups.delete(id) : focusGroups.add(id);
+    focusKey = null; applyFocus(); highlight(); buildShowRow(); renderPick();
   }));
-  $('showAll').addEventListener('click', () => { hiddenGroups.clear(); buildShowRow(); visibility(); });
+  $('showAll').addEventListener('click', exitFocus);
 }
 function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 
@@ -1168,41 +1169,43 @@ function visibility(){
   if (!model) return;
   model.children.forEach(o => {
     const pt = o.userData.part;
-    o.visible = !isHidden(pt);
+    o.visible = true;
   });
   if (dimObj && dimObj.userData.part) {
     const pt = dimObj.userData.part;
-    if (isHidden(pt)) clearDim();
+    void pt;
   }
 }
 function highlight(){
   if (!MAT.posts) return;
   const ch = css('--chalk')||'#1d5bd0';
-  Object.keys(MAT).forEach(k => { const on = k === selected && !focusKey; MAT[k].emissive.set(on ? ch : 0x000000); MAT[k].emissiveIntensity = on ? 0.45 : 0; });
+  Object.keys(MAT).forEach(k => { const on = k === selected && !focusKey && !focusGroups.size; MAT[k].emissive.set(on ? ch : 0x000000); MAT[k].emissiveIntensity = on ? 0.45 : 0; });
 }
 // focus: one piece stays solid and lit, every other piece turns see-through
-let focusKey = null, GHOST = null, FOCUSMAT = null;
+let focusKey = null, GHOST = null, FOCUSMAT = {};
 function applyFocus(){
   if (!model) return null;
   if (!GHOST) GHOST = new THREE.MeshStandardMaterial({color:0x9aa39f, transparent:true, opacity:0.1, depthWrite:false, roughness:1});
   let target = null;
   model.children.forEach(o => { if (o.isMesh && o.userData.key === focusKey) target = o; });
   if (focusKey && !target) focusKey = null;
-  if (FOCUSMAT) { FOCUSMAT.dispose(); FOCUSMAT = null; }
-  if (target) {
-    FOCUSMAT = MAT[target.userData.part].clone();
-    FOCUSMAT.emissive.set(css('--chalk')||'#1d5bd0'); FOCUSMAT.emissiveIntensity = 0.35;
-  }
+  const active = !!focusKey || focusGroups.size > 0;
+  const lit = o => focusKey ? o.userData.key === focusKey : focusGroups.has(groupOf(o.userData.part));
+  Object.values(FOCUSMAT).forEach(m => m.dispose()); FOCUSMAT = {};
+  const litMat = part => {
+    if (!FOCUSMAT[part]) { const m = MAT[part].clone(); m.emissive.set(css('--chalk')||'#1d5bd0'); m.emissiveIntensity = 0.35; FOCUSMAT[part] = m; }
+    return FOCUSMAT[part];
+  };
   model.children.forEach(o => {
-    const mine = o.userData.key === focusKey;
-    if (o.isMesh) o.material = !focusKey ? MAT[o.userData.part] : mine ? FOCUSMAT : GHOST;
-    else if (o.userData.edge) o.material.opacity = !focusKey || mine ? 0.35 : 0.06;
+    const on = active && lit(o);
+    if (o.isMesh) o.material = !active ? MAT[o.userData.part] : on ? litMat(o.userData.part) : GHOST;
+    else if (o.userData.edge) o.material.opacity = !active || on ? 0.35 : 0.06;
   });
-  $('tFocus').hidden = !focusKey;
+  $('tFocus').hidden = !active;
   return target;
 }
 function focusOn(mesh){
-  focusKey = mesh.userData.key;
+  focusKey = mesh.userData.key; focusGroups.clear(); buildShowRow();
   select(mesh.userData.part, mesh, true);
   const t = applyFocus(); if (!t) return;
   // slide the view so the piece is in the middle, keeping the same angle and distance
@@ -1210,7 +1213,7 @@ function focusOn(mesh){
   const d = c.clone().sub(controls.target);
   controls.target.add(d); camera.position.add(d); controls.update();
 }
-function exitFocus(){ focusKey = null; applyFocus(); highlight(); renderPick(); }
+function exitFocus(){ focusKey = null; focusGroups.clear(); applyFocus(); highlight(); buildShowRow(); renderPick(); }
 
 // dimension line drawn on the tapped piece, with the cut length as a floating label
 function clearDim(){
@@ -1321,7 +1324,7 @@ function snapshot(kind){
   const vis = model.children.map(o => o.visible);
   model.children.forEach(o => o.visible = true);
   if (dimObj) dimObj.visible = false;
-  const was = selected, fk = focusKey; selected = null; focusKey = null; applyFocus(); highlight();
+  const was = selected, fk = focusKey, fg = [...focusGroups]; selected = null; focusKey = null; focusGroups.clear(); applyFocus(); highlight();
   renderer.setPixelRatio(1); renderer.setSize(W, H, false);
   scene.background = new THREE.Color(0xffffff); grid.visible = kind === 'persp';
   camera.aspect = W/H;
@@ -1343,7 +1346,7 @@ function snapshot(kind){
   renderer.setPixelRatio(pr);
   model.children.forEach((o,i) => o.visible = vis[i]);
   if (dimObj) dimObj.visible = true;
-  selected = was; focusKey = fk; highlight(); applyFocus(); size(); controls.update();
+  selected = was; focusKey = fk; fg.forEach(x => focusGroups.add(x)); highlight(); applyFocus(); size(); controls.update();
   return url;
 }
 async function makePdf(check){
