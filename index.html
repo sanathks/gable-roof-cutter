@@ -704,9 +704,17 @@ function init3d(){
   renderer.domElement.addEventListener('pointerup', e => {
     if (!down || Math.hypot(e.clientX-down[0], e.clientY-down[1]) > 6) return;
     const r = renderer.domElement.getBoundingClientRect();
-    const v = new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
-    const rc = new THREE.Raycaster(); rc.setFromCamera(v, camera);
-    const hit = rc.intersectObjects(model ? model.children.filter(o=>o.isMesh && o.visible) : [], false)[0];
+    const rc = new THREE.Raycaster(), meshes = model ? model.children.filter(o=>o.isMesh && o.visible) : [];
+    // thin pieces are hard to hit with a finger, so also try points around the tap
+    const near = [[0,0]];
+    [8,16].forEach(d => { for (let i=0;i<8;i++) near.push([d*Math.cos(i*Math.PI/4), d*Math.sin(i*Math.PI/4)]); });
+    let hit = null;
+    for (const [dx,dy] of near) {
+      const v = new THREE.Vector2(((e.clientX+dx-r.left)/r.width)*2-1, -((e.clientY+dy-r.top)/r.height)*2+1);
+      rc.setFromCamera(v, camera);
+      hit = rc.intersectObjects(meshes, false)[0];
+      if (hit) break;
+    }
     if (hit) select(hit.object.userData.part, hit.object);
     else select(null);
   });
