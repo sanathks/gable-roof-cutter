@@ -251,6 +251,7 @@ tfoot td{font-weight:600;border-bottom:0}
       <div class="view-tools">
         <div class="showrow" id="showRow" role="group" aria-label="Show pieces"></div>
         <button type="button" id="tView">Reset view</button>
+        <button type="button" id="tFocus" class="primary" hidden>Exit focus</button>
         <button type="button" id="tMax" class="max-btn" aria-pressed="false">Full screen</button>
       </div>
       <div class="pick" id="pick"></div>
@@ -953,7 +954,7 @@ function renderPick(){
   const reopen = r && canPanel() && bpHidden;
   $('pick').innerHTML = r
     ? '<b>'+PART[r.id].name+'</b><span class="mono">'+r.qty+' × '+f0(r.len)+'</span><span class="mono">'+f0(r.w)+' × '+f0(r.h)+'</span><button type="button" id="pickGo">'+(reopen ? 'Show blueprint' : 'Cut drawing ↓')+'</button>'
-    : '<span class="hint">Drag to turn, pinch to zoom. Tap a piece to measure it.</span>';
+    : '<span class="hint">Drag to turn, pinch to zoom. Tap a piece to measure it, double-tap to inspect it alone.</span>';
   const b = $('pickGo');
   if (b) b.addEventListener('click', () => { if (reopen) { bpHidden = false; renderBlue(); renderPick(); } else goTo('pieceCard'); });
 }
@@ -1048,7 +1049,7 @@ function init3d(){
   applyTheme();
   new ResizeObserver(size).observe(el); size();
 
-  let down = null;
+  let down = null, lastTap = null;
   renderer.domElement.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; });
   renderer.domElement.addEventListener('pointerup', e => {
     if (!down || Math.hypot(e.clientX-down[0], e.clientY-down[1]) > 6) return;
@@ -1064,8 +1065,11 @@ function init3d(){
       hit = rc.intersectObjects(meshes, false)[0];
       if (hit) break;
     }
-    if (hit) select(hit.object.userData.part, hit.object, true);
-    else select(null);
+    const now = performance.now();
+    const dbl = lastTap && now - lastTap.t < 380 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30;
+    lastTap = dbl ? null : {t: now, x: e.clientX, y: e.clientY};
+    if (hit) { if (dbl || focusKey) focusOn(hit.object); else select(hit.object.userData.part, hit.object, true); }
+    else { if (focusKey) exitFocus(); select(null); }
   });
   (function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); placeLabel(); })();
 }
@@ -1087,14 +1091,16 @@ function applyTheme(){
 }
 
 // every mesh carries the two ends (mm) of the measurement shown when it is tapped
+let keyCount = {};
 function addMesh(geo, part, pos, rotY, dim){
   const m = new THREE.Mesh(geo, MAT[part]);
-  m.userData.part = part; m.userData.dim = dim;
+  keyCount[part] = (keyCount[part] || 0) + 1;
+  m.userData.part = part; m.userData.dim = dim; m.userData.key = part+':'+keyCount[part];
   if (pos) m.position.set(pos[0], pos[1], pos[2]);
   if (rotY) m.rotation.y = rotY;
   model.add(m);
   const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), new THREE.LineBasicMaterial({color:0x2a1d10, transparent:true, opacity:0.35}));
-  e.position.copy(m.position); e.rotation.copy(m.rotation); e.userData.part = part; e.userData.edge = true;
+  e.position.copy(m.position); e.rotation.copy(m.rotation); e.userData.part = part; e.userData.edge = true; e.userData.key = m.userData.key;
   model.add(e);
   return m;
 }
@@ -1108,7 +1114,7 @@ function build3d(g,p){
   if (!scene) return;
   clearDim();
   if (model) { model.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.userData.edge && o.material) o.material.dispose(); }); scene.remove(model); }
-  model = new THREE.Group(); scene.add(model);
+  model = new THREE.Group(); scene.add(model); keyCount = {};
   const px = p.W/2 + p.b/2, off = 90;
   [-1,1].forEach(sx => [-1,1].forEach(sz => box('posts', p.b, p.H, p.b, sx*px, p.H/2, sz*g.frameZ,
     [[sx*(px+p.b/2+off), 0, sz*g.frameZ],[sx*(px+p.b/2+off), p.H, sz*g.frameZ]])));
@@ -1147,6 +1153,7 @@ function build3d(g,p){
   }
   visibility();
   highlight();
+  applyFocus();
   if (firstFrame) { fitView(g,p); firstFrame = false; }
 }
 function fitView(g,p){
@@ -1171,8 +1178,39 @@ function visibility(){
 function highlight(){
   if (!MAT.posts) return;
   const ch = css('--chalk')||'#1d5bd0';
-  Object.keys(MAT).forEach(k => { MAT[k].emissive.set(k===selected ? ch : 0x000000); MAT[k].emissiveIntensity = k===selected ? 0.45 : 0; });
+  Object.keys(MAT).forEach(k => { const on = k === selected && !focusKey; MAT[k].emissive.set(on ? ch : 0x000000); MAT[k].emissiveIntensity = on ? 0.45 : 0; });
 }
+// focus: one piece stays solid and lit, every other piece turns see-through
+let focusKey = null, GHOST = null, FOCUSMAT = null;
+function applyFocus(){
+  if (!model) return null;
+  if (!GHOST) GHOST = new THREE.MeshStandardMaterial({color:0x9aa39f, transparent:true, opacity:0.1, depthWrite:false, roughness:1});
+  let target = null;
+  model.children.forEach(o => { if (o.isMesh && o.userData.key === focusKey) target = o; });
+  if (focusKey && !target) focusKey = null;
+  if (FOCUSMAT) { FOCUSMAT.dispose(); FOCUSMAT = null; }
+  if (target) {
+    FOCUSMAT = MAT[target.userData.part].clone();
+    FOCUSMAT.emissive.set(css('--chalk')||'#1d5bd0'); FOCUSMAT.emissiveIntensity = 0.35;
+  }
+  model.children.forEach(o => {
+    const mine = o.userData.key === focusKey;
+    if (o.isMesh) o.material = !focusKey ? MAT[o.userData.part] : mine ? FOCUSMAT : GHOST;
+    else if (o.userData.edge) o.material.opacity = !focusKey || mine ? 0.35 : 0.06;
+  });
+  $('tFocus').hidden = !focusKey;
+  return target;
+}
+function focusOn(mesh){
+  focusKey = mesh.userData.key;
+  select(mesh.userData.part, mesh, true);
+  const t = applyFocus(); if (!t) return;
+  // slide the view so the piece is in the middle, keeping the same angle and distance
+  const c = new THREE.Box3().setFromObject(t).getCenter(new THREE.Vector3());
+  const d = c.clone().sub(controls.target);
+  controls.target.add(d); camera.position.add(d); controls.update();
+}
+function exitFocus(){ focusKey = null; applyFocus(); highlight(); renderPick(); }
 
 // dimension line drawn on the tapped piece, with the cut length as a floating label
 function clearDim(){
@@ -1283,7 +1321,7 @@ function snapshot(kind){
   const vis = model.children.map(o => o.visible);
   model.children.forEach(o => o.visible = true);
   if (dimObj) dimObj.visible = false;
-  const was = selected; selected = null; highlight();
+  const was = selected, fk = focusKey; selected = null; focusKey = null; applyFocus(); highlight();
   renderer.setPixelRatio(1); renderer.setSize(W, H, false);
   scene.background = new THREE.Color(0xffffff); grid.visible = kind === 'persp';
   camera.aspect = W/H;
@@ -1305,7 +1343,7 @@ function snapshot(kind){
   renderer.setPixelRatio(pr);
   model.children.forEach((o,i) => o.visible = vis[i]);
   if (dimObj) dimObj.visible = true;
-  selected = was; highlight(); size(); controls.update();
+  selected = was; focusKey = fk; highlight(); applyFocus(); size(); controls.update();
   return url;
 }
 async function makePdf(check){
@@ -1472,6 +1510,7 @@ showUnit();
 window.addEventListener('resize', () => renderBlue());
 $('tMax').addEventListener('click', () => setMax(!$('viewer').classList.contains('max')));
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('viewer').classList.contains('max')) setMax(false); });
+$('tFocus').addEventListener('click', exitFocus);
 $('tView').addEventListener('click', () => { if (G) fitView(G, PP); });
 try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { applyTheme(); highlight(); }); } catch (e) {}
 new MutationObserver(() => { applyTheme(); highlight(); }).observe(document.documentElement, {attributes:true, attributeFilter:['data-theme']});
