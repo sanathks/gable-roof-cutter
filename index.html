@@ -67,6 +67,11 @@ button.primary{background:var(--chalk);border-color:var(--chalk);color:var(--pan
 #view3d canvas{display:block;touch-action:none}
 .view-tools{position:absolute;top:10px;left:10px;right:10px;display:flex;flex-wrap:wrap;gap:6px;pointer-events:none}
 .view-tools button{background:var(--panel);font-size:13px;padding:5px 11px;pointer-events:auto}
+.view-tools .max-btn{margin-left:auto}
+.viewer.max{position:fixed;inset:0;z-index:50;height:auto;min-height:0;border-radius:0;border:0}
+.viewer.max .view-tools{top:calc(10px + env(safe-area-inset-top,0px));left:calc(10px + env(safe-area-inset-left,0px));right:calc(10px + env(safe-area-inset-right,0px))}
+.viewer.max .pick{bottom:calc(10px + env(safe-area-inset-bottom,0px))}
+body.maxed .mbar{display:none}
 .dimlabel{position:absolute;left:0;top:0;transform:translate(-50%,-50%);pointer-events:none;background:var(--chalk);color:var(--panel);font:600 13px var(--f-mono);padding:2px 7px;border-radius:4px;white-space:nowrap;font-variant-numeric:tabular-nums}
 .pick{position:absolute;left:10px;bottom:10px;right:10px;display:flex;flex-wrap:wrap;gap:2px 10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px 6px 12px;font-size:13px;max-width:max-content}
 .pick b{font-family:var(--f-display);font-size:1.05rem;font-weight:600}
@@ -184,13 +189,14 @@ tfoot td{font-weight:600;border-bottom:0}
   </aside>
 
   <section class="work">
-    <div class="viewer">
+    <div class="viewer" id="viewer">
       <div id="view3d"></div>
       <div class="dimlabel" id="dimlabel" hidden></div>
       <div class="view-tools">
         <button type="button" id="tRafters" aria-pressed="true">Rafters</button>
         <button type="button" id="tBraces" aria-pressed="true">Braces</button>
         <button type="button" id="tView">Reset view</button>
+        <button type="button" id="tMax" class="max-btn" aria-pressed="false">Full screen</button>
       </div>
       <div class="pick" id="pick"></div>
     </div>
@@ -655,7 +661,15 @@ function renderPick(){
     : '<span class="hint">Drag to turn, pinch to zoom. Tap a piece to measure it.</span>';
   const b = $('pickGo'); if (b) b.addEventListener('click', () => goTo('pieceCard'));
 }
+function setMax(on){
+  $('viewer').classList.toggle('max', on);
+  document.body.classList.toggle('maxed', on);
+  document.body.style.overflow = on ? 'hidden' : '';
+  $('tMax').setAttribute('aria-pressed', on);
+  $('tMax').textContent = on ? 'Exit full screen' : 'Full screen';
+}
 function goTo(id){
+  if ($('viewer').classList.contains('max')) setMax(false);
   const el = $(id); if (!el) return;
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   el.scrollIntoView({behavior: reduce ? 'auto' : 'smooth', block:'start'});
@@ -888,6 +902,8 @@ $('mCuts').addEventListener('click', () => goTo('pieceCard'));
 $('copy').addEventListener('click', copyList);
 $('tRafters').addEventListener('click', e => { showRafters = !showRafters; e.currentTarget.setAttribute('aria-pressed', showRafters); visibility(); });
 $('tBraces').addEventListener('click', e => { showBraces = !showBraces; e.currentTarget.setAttribute('aria-pressed', showBraces); visibility(); });
+$('tMax').addEventListener('click', () => setMax(!$('viewer').classList.contains('max')));
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('viewer').classList.contains('max')) setMax(false); });
 $('tView').addEventListener('click', () => { if (G) fitView(G, PP); });
 try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { applyTheme(); highlight(); }); } catch (e) {}
 new MutationObserver(() => { applyTheme(); highlight(); }).observe(document.documentElement, {attributes:true, attributeFilter:['data-theme']});
