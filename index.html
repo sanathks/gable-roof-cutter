@@ -339,7 +339,17 @@ const f0 = n => r0(n).toLocaleString('en-US');
 const f1 = n => (Math.round(n*10)/10).toString();
 const isPhone = () => window.matchMedia('(max-width:760px)').matches;
 
-/* ---------- geometry ---------- */
+/* ---------- geometry (everything from here to the inputs section is pure calculation, loaded by tests/) ---------- */
+function sane(p){
+  const q = Object.assign({}, p);
+  q.pitch = Math.min(75, Math.max(5, q.pitch));
+  q.bAng = Math.min(75, Math.max(15, q.bAng));
+  ['W','Lc','H','b','bh','ridgeW','ridgeH','rt','rd','rtf','be','bt','bDrop'].forEach(k => q[k] = Math.max(10, q[k]));
+  ['embed','Oe','Og','hb','hr','gauge'].forEach(k => q[k] = Math.max(0, q[k]));
+  q.maxSp = Math.max(200, q.maxSp);
+  return q;
+}
+
 function compute(p){
   const a = p.pitch*Math.PI/180, tn = Math.tan(a), cs = Math.cos(a);
   const xo = p.W/2 + p.b;              // outside face of eaves beam, from the centre line
@@ -358,7 +368,7 @@ function compute(p){
   const prof = [[0,zT(0)],[runX,zT(runX)],[runX,zU(runX)],[xo,z0-p.hb],[xo,z0],[xo-seat,z0]];
   if (p.hr > 0) {
     prof.push([rw2,zU(rw2)],[rw2,zR]);
-    if (rw2 - rSeat > 0.5) prof.push([rw2-rSeat,zR],[0,zU(0)]); else prof.push([0,zR]);
+    if (rw2 - rSeat > 1e-9) prof.push([rw2-rSeat,zR],[0,zU(0)]); else prof.push([0,zR]);
   } else prof.push([0,zU(0)]);
   const kp = zR - p.ridgeH - z0;
   const Lt = p.Lc + 2*p.b + 2*p.Og;
@@ -407,6 +417,8 @@ function warnings(g,p){
   if (g.kp <= 0) w.push(['warn','The ridge beam is taller than the space under the rafters at this pitch. Make it lower or raise the pitch.']);
   if (p.hb > g.dz/3) w.push(['warn','The birdsmouth cuts away more than a third of the rafter ('+f0(p.hb)+' of '+f0(g.dz)+' mm plumb). That weakens the rafter where it sits on the beam.']);
   if (p.hr > g.dz/2) w.push(['warn','The ridge notch cuts away more than half the rafter ('+f0(p.hr)+' of '+f0(g.dz)+' mm plumb).']);
+  if (g.seat > p.b) w.push(['warn','The birdsmouth seat ('+f0(g.seat)+' mm) is longer than the eaves beam is wide ('+f0(p.b)+' mm), so the notch runs past the inside of the beam. Make the notch shallower or the roof steeper.']);
+  if (g.Lt/2 < g.frameZ + p.rtf/2) w.push(['warn','The rafters over the posts ('+f0(p.rtf)+' mm wide) stick out past the end of the roof. Make the gable overhang at least '+f0(Math.max(0,(p.rtf-p.b)/2))+' mm.']);
   if (p.hb <= 0) w.push(['warn','A birdsmouth depth of 0 leaves the rafter resting on a corner. Use a notch of at least 20 mm.']);
   if (g.bk <= 0.15) w.push(['warn','The braces are too short for their depth. Increase the brace drop or use thinner braces.']);
   if ((p.braceT || p.braceL) && p.H - p.bDrop < 2000) w.push(['warn','Headroom next to the posts, under the braces, is only '+f0(p.H-p.bDrop)+' mm.']);
@@ -575,15 +587,6 @@ function buildRail(){
     });
     rail.appendChild(fs);
   });
-}
-function sane(p){
-  const q = Object.assign({}, p);
-  q.pitch = Math.min(75, Math.max(5, q.pitch));
-  q.bAng = Math.min(75, Math.max(15, q.bAng));
-  ['W','Lc','H','b','bh','ridgeW','ridgeH','rt','rd','rtf','be','bt','bDrop'].forEach(k => q[k] = Math.max(10, q[k]));
-  ['embed','Oe','Og','hb','hr','gauge'].forEach(k => q[k] = Math.max(0, q[k]));
-  q.maxSp = Math.max(200, q.maxSp);
-  return q;
 }
 
 /* ---------- cut drawings (SVG in screen pixels, so text stays readable on a phone) ---------- */
