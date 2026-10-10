@@ -1421,7 +1421,7 @@ function focusRafter(i){
   });
   scene.add(dimObj);
   dimMid = V3([x, y, (z0 + z1)/2]);
-  $('dimlabel').textContent = 'Rafter '+r.n+' · left edge at '+f0(r.left)+' '+UL()+' from the end';
+  $('dimlabel').textContent = 'Rafter '+r.n+' · '+f0(r.left)+' '+UL()+' from end';
   $('dimlabel').hidden = false;
   annoKey = '__layout';   // keeps the label lifted above its line
   turnTo('side', V3([x, y, z0 + Math.max(r.left, 300)/2]), Math.max(r.left, 900)*S);
@@ -1515,7 +1515,8 @@ function showAnno(k, move){
 function turnTo(view, target, size){
   const dirs = {front:[0.35,0.3,1], side:[1,0.3,0.35], iso:[0.9,0.6,1]}, d = new THREE.Vector3(...(dirs[view] || dirs.iso)).normalize();
   const span = Math.max(G.Lt, 2*G.runX, G.ridgeTop)*S;
-  const dist = size ? Math.min(Math.max(size*2.8, span*0.4), span*1.6) : Math.min(Math.max(camera.position.distanceTo(controls.target), span*1.1), span*2.2);
+  const narrow = Math.max(1, 1.15/camera.aspect);   // tall phone screens need the camera further back
+  const dist = (size ? Math.min(Math.max(size*2.8, span*0.4), span*1.6) : Math.min(Math.max(camera.position.distanceTo(controls.target), span*1.1), span*2.2))*narrow;
   const p0 = camera.position.clone(), t0 = controls.target.clone();
   const p1 = target.clone().add(d.multiplyScalar(dist)), t1 = target.clone();
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches, start = performance.now(), my = ++camAnim;
