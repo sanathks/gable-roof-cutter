@@ -276,3 +276,24 @@ test('switching the ridge notch off: no notch, rafters rest on the ridge beam, r
   const kit = R.printKit(off.g, off.p, 20, 220);
   assert.equal(closedSolid(kit.tris), 0, 'kit without ridge notch is still closed');
 });
+
+test('roof triangle: run, rise and rafter line obey Pythagoras and add up to the ridge height', () => {
+  for (const over of [{}, { pitch: 25 }, { pitch: 52, Oe: 600 }, { ridgeNotch: false }, { W: 3600, b: 150 }]) {
+    const { p, g } = setup(over), t = R.triangleFacts(g, p);
+    const top = g.prof[0], tail = g.prof[1];
+    const atHeel = atX(top, tail, p.W / 2 + p.b);                       // top edge above the outside of the eaves beam
+    near(t.run, top[0] === 0 ? atHeel[0] : NaN, 'run is the level distance from the beam face to the centre line');
+    near(t.rise, top[1] - atHeel[1], 'rise is measured on the rafter top edge');
+    near(t.line, dist(top, atHeel), 'rafter line is the measured top edge between the two plumb lines');
+    near(t.line * t.line, t.run * t.run + t.rise * t.rise, 'Pythagoras', 1e-6 * t.line * t.line);
+    near(t.line, g.heel, 'rafter line equals the birdsmouth mark');
+    near(t.lineAll, g.rafterLen, 'with the overhang the triangle gives the full rafter length');
+    near(t.pitch, p.pitch, 'pitch angle from rise and run');
+    near(t.inTwelve, 12 * Math.tan(p.pitch * Math.PI / 180), 'rise in 12');
+    near(t.beamTop + t.measureDown + t.rise, g.ridgeTop, 'beam top + measure-down + rise = ridge height');
+    assert.deepEqual(anglesIn(R.triangleSVG(g, p, 600)), [Math.round(p.pitch * 10) / 10, 90], 'pitch arc and square corner drawn');
+  }
+  const { p, g } = setup(), t = R.triangleFacts(g, p);
+  console.log('run', t.run.toFixed(1), 'rise', t.rise.toFixed(1), 'line', t.line.toFixed(1), '| with overhang', t.runAll.toFixed(1), t.riseAll.toFixed(1), t.lineAll.toFixed(1),
+    '| ridge', t.beamTop.toFixed(1), '+', t.measureDown.toFixed(1), '+', t.rise.toFixed(1), '=', t.ridge.toFixed(1));
+});
