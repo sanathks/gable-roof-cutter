@@ -150,7 +150,7 @@ svg text.c{fill:var(--chalk)}
 svg text.m{fill:var(--muted)}
 svg .ang{fill:none;stroke:var(--warn);stroke-width:1.4}
 svg text.angt{fill:var(--warn);font-weight:600}
-svg .tri{fill:var(--warn-soft);fill-opacity:.8;stroke:var(--chalk);stroke-width:2}
+svg .tri{fill:var(--warn-soft);fill-opacity:.45;stroke:var(--chalk);stroke-width:2}
 .tri-wrap{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px;align-items:start}
 .tri-wrap svg{width:100%;height:auto;display:block;background:var(--paper);border-radius:8px;border:1px solid var(--line)}
 .facts{display:grid;gap:8px;margin:0}
@@ -831,7 +831,7 @@ function triangleSVG(g,p,W){
   h += '<text class="c" x="'+(B[0]+8).toFixed(1)+'" y="'+((B[1]+C[1])/2+4).toFixed(1)+'">rise '+f0(t.rise)+'</text>';
   const mx = (A[0]+C[0])/2, my = (A[1]+C[1])/2;
   h += '<text class="c" x="'+(mx-10).toFixed(1)+'" y="'+(my-12).toFixed(1)+'" text-anchor="end">rafter line '+f0(t.line)+'</text>';
-  h += '<text class="m" x="'+(D[0]).toFixed(1)+'" y="'+(D[1]-10).toFixed(1)+'">overhang</text>';
+  h += '<text class="m" x="'+(D[0]).toFixed(1)+'" y="'+(D[1]+30).toFixed(1)+'">overhang</text>';
   h += '<text class="m" x="'+(X(0)-4).toFixed(1)+'" y="'+(Y(top)-18).toFixed(1)+'" text-anchor="end">ridge</text>';
   h += '<text class="m" x="'+X(xo).toFixed(1)+'" y="'+(Y(low)+16).toFixed(1)+'">post</text>';
   return svg(W, Y(low) + 24, h, 'Roof triangle: run, rise and rafter line');
@@ -1373,7 +1373,7 @@ function downloadStl(){
 // drawings carry class names only, so the PDF gets its own fixed light colours
 const PRINT_CSS = '<style>.wood{fill:#e3ebfb;stroke:#1c2320;stroke-width:1.4}.ground{fill:#d5dad4}.dim{stroke:#59635e;stroke-width:1}'+
   '.mark{stroke:#1d5bd0;stroke-width:1.4;stroke-dasharray:4 3}text{fill:#1c2320;font-family:"Courier New",Courier,monospace;font-size:12px}'+
-  'text.c{fill:#1d5bd0}text.m{fill:#59635e}.tri{fill:#f8e9d6;stroke:#1d5bd0;stroke-width:2}text.n{font-family:Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;letter-spacing:.06em}.ang{fill:none;stroke:#b05a00;stroke-width:1.4}text.angt{fill:#b05a00;font-weight:700}</style>';
+  'text.c{fill:#1d5bd0}text.m{fill:#59635e}.tri{fill:#f8e9d6;fill-opacity:.55;stroke:#1d5bd0;stroke-width:2}text.n{font-family:Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;letter-spacing:.06em}.ang{fill:none;stroke:#b05a00;stroke-width:1.4}text.angt{fill:#b05a00;font-weight:700}</style>';
 function svgToPng(str, k){
   return new Promise((res, rej) => {
     const m = str.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/), w = +m[1], h = +m[2];
