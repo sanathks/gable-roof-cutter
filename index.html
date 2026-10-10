@@ -1436,7 +1436,8 @@ function placeLabel(){
   const lab = $('dimlabel');
   if (v.z > 1) { lab.style.visibility = 'hidden'; return; }
   lab.style.visibility = 'visible';
-  lab.style.transform = 'translate('+((v.x+1)/2*el.clientWidth)+'px,'+((1-v.y)/2*el.clientHeight)+'px) translate(-50%,-50%)';
+  // size highlights sit just above their line so the line stays visible
+  lab.style.transform = 'translate('+((v.x+1)/2*el.clientWidth)+'px,'+((1-v.y)/2*el.clientHeight)+'px) translate(-50%,'+(annoKey ? '-170%' : '-50%')+')';
 }
 
 function markRelated(){
