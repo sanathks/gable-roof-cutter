@@ -75,8 +75,8 @@ body.maxed .mbar{display: none}
 /* blueprint panel inside the viewer: right side on wide screens, bottom on phones */
 .blueprint{--bpw:min(400px,44%);position:absolute;top:0;right:0;bottom:0;width:var(--bpw);background:var(--panel);border-left:1px solid var(--line);overflow:auto;-webkit-overflow-scrolling:touch;padding:12px 14px 16px;display:none;gap:10px;align-content:start}
 .viewer.bp .blueprint{display:grid}
-.viewer.bp #view3d{right:min(400px,44%)}
-.viewer.bp .view-tools{right:calc(min(400px,44%) + 10px)}
+.viewer.bp:not(.sheet) #view3d{right:min(400px,44%)}
+.viewer.bp:not(.sheet) .view-tools{right:calc(min(400px,44%) + 10px)}
 .viewer.bp .pick{display:none}
 .bp-head{display:flex;gap:8px;align-items:flex-start;justify-content:space-between}
 .bp-head h3{font-family:var(--f-display);font-size:1.4rem;font-weight:600;margin:0;line-height:1.1}
@@ -85,11 +85,18 @@ body.maxed .mbar{display: none}
 .bp-head button{flex:none;padding:4px 10px}
 .blueprint .drawings{gap:8px}
 .blueprint .steps{font-size:13px;gap:6px}
-@media (max-width:760px){
-  .blueprint{top:auto;left:0;width:auto;height:48%;border-left:0;border-top:1px solid var(--line);padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
-  .viewer.bp #view3d{right:0;bottom:48%}
-  .viewer.bp .view-tools{right:10px}
-}
+/* phones and tablets: a bottom sheet over the model, compact until "More" */
+.viewer.sheet .blueprint{top:auto;left:0;right:0;width:auto;max-height:36%;border-left:0;border-top:1px solid var(--line);border-radius:14px 14px 0 0;padding:6px 14px calc(12px + env(safe-area-inset-bottom,0px));box-shadow:0 -8px 24px rgba(0,0,0,.18)}
+.viewer.sheet .blueprint.full{max-height:70%}
+.viewer.sheet.bp .blueprint{animation:sheetUp .22s ease-out}
+.viewer.sheet .blueprint::before{content:"";justify-self:center;width:36px;height:4px;border-radius:2px;background:var(--line)}
+.viewer.sheet .bp-head h3{font-size:1.2rem}
+.blueprint.compact .role,.blueprint.compact .steps,.blueprint.compact figure+figure,.blueprint.compact figcaption{display:none}
+.bp-btns{display:flex;gap:6px;flex:none}
+#bpMore{display:none}
+.viewer.sheet #bpMore{display:inline-block}
+@keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+@media (prefers-reduced-motion:reduce){.viewer.sheet.bp .blueprint{animation:none}}
 .dimlabel{position:absolute;left:0;top:0;transform:translate(-50%,-50%);pointer-events:none;background:var(--chalk);color:var(--panel);font:600 13px var(--f-mono);padding:2px 7px;border-radius:4px;white-space:nowrap;font-variant-numeric:tabular-nums}
 .pick{position:absolute;left:10px;bottom:10px;right:10px;display:flex;flex-wrap:wrap;gap:2px 10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px 6px 12px;font-size:13px;max-width:max-content}
 .pick b{font-family:var(--f-display);font-size:1.05rem;font-weight:600}
@@ -244,7 +251,7 @@ tfoot td{font-weight:600;border-bottom:0}
       </div>
       <div class="pick" id="pick"></div>
       <aside class="blueprint" id="blueprint" aria-label="Blueprint of the selected piece">
-        <div class="bp-head"><div id="bpTitle"></div><button type="button" id="bpClose" aria-label="Close blueprint">Close</button></div>
+        <div class="bp-head"><div id="bpTitle"></div><div class="bp-btns"><button type="button" id="bpMore" aria-expanded="false">More</button><button type="button" id="bpClose" aria-label="Close blueprint">Close</button></div></div>
         <p class="role" id="bpRole"></p>
         <div class="drawings" id="bpDraw"></div>
         <ol class="steps" id="bpSteps"></ol>
@@ -897,7 +904,7 @@ function render(g,p){
   const lm = LIST.reduce((s,r)=>s + r.qty*r.len, 0)/1000;
   $('cutlist').innerHTML = '<thead><tr><th>Piece</th><th class="num">Qty</th><th class="num">Section</th><th class="num">Length</th><th class="num">Total m</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td class="name">Total: '+pcs+' pieces, '+lm.toFixed(1)+' m</td><td></td><td></td><td></td><td class="num mono tot">'+lm.toFixed(2)+'</td></tr></tfoot>';
   $('cutlist').querySelectorAll('tbody tr').forEach(tr => {
-    const go = () => { select(tr.dataset.part); goTo('pieceCard'); };
+    const go = () => { select(tr.dataset.part, null, true); goTo('pieceCard'); };
     tr.addEventListener('click', go);
     tr.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); go(); } });
   });
@@ -920,7 +927,7 @@ let lastW = 0;
 function renderPiece(){
   if (!G) return;
   $('chips').innerHTML = LIST.map(r => '<button type="button" role="tab" data-part="'+r.id+'" aria-pressed="'+(r.id===shown)+'">'+PART[r.id].name+'</button>').join('');
-  $('chips').querySelectorAll('button').forEach(b => b.addEventListener('click', () => select(b.dataset.part)));
+  $('chips').querySelectorAll('button').forEach(b => b.addEventListener('click', () => select(b.dataset.part, null, true)));
   const r = LIST.find(x => x.id === shown);
   if (!r) return;
   $('pieceRole').textContent = ROLE[r.id] || '';
@@ -933,18 +940,28 @@ function renderPiece(){
 }
 new ResizeObserver(() => { const w = $('pieceDraw').clientWidth; if (w && Math.abs(Math.min(w,760) - lastW) > 8) renderPiece(); }).observe($('pieceDraw'));
 
+// phones and tablets get a bottom sheet; it opens over the model only in full screen
+const isSheet = () => window.matchMedia('(max-width:760px), (pointer:coarse) and (max-width:1180px)').matches;
+const canPanel = () => !isSheet() || $('viewer').classList.contains('max');
+let bpHidden = false, bpFull = false;
 function renderPick(){
   const r = LIST.find(x => x.id === selected);
+  const reopen = r && canPanel() && bpHidden;
   $('pick').innerHTML = r
-    ? '<b>'+PART[r.id].name+'</b><span class="mono">'+r.qty+' × '+f0(r.len)+'</span><span class="mono">'+f0(r.w)+' × '+f0(r.h)+'</span><button type="button" id="pickGo">Cut drawing ↓</button>'
+    ? '<b>'+PART[r.id].name+'</b><span class="mono">'+r.qty+' × '+f0(r.len)+'</span><span class="mono">'+f0(r.w)+' × '+f0(r.h)+'</span><button type="button" id="pickGo">'+(reopen ? 'Show blueprint' : 'Cut drawing ↓')+'</button>'
     : '<span class="hint">Drag to turn, pinch to zoom. Tap a piece to measure it.</span>';
-  const b = $('pickGo'); if (b) b.addEventListener('click', () => goTo('pieceCard'));
+  const b = $('pickGo');
+  if (b) b.addEventListener('click', () => { if (reopen) { bpHidden = false; renderBlue(); renderPick(); } else goTo('pieceCard'); });
 }
 // the blueprint panel opens on wide screens, and on phones when the model is full screen
 let bpW = 0;
 function renderBlue(){
-  const v = $('viewer'), on = !!selected && !!G && (!isPhone() || v.classList.contains('max'));
+  const v = $('viewer'), sheet = isSheet(), on = !!selected && !!G && !bpHidden && canPanel();
+  v.classList.toggle('sheet', sheet);
   v.classList.toggle('bp', on);
+  const bp = $('blueprint'), compact = sheet && !bpFull;
+  bp.classList.toggle('compact', compact); bp.classList.toggle('full', sheet && bpFull);
+  $('bpMore').textContent = bpFull ? 'Less' : 'More'; $('bpMore').setAttribute('aria-expanded', bpFull);
   if (!on) return;
   const r = LIST.find(x => x.id === selected); if (!r) return;
   $('bpRole').textContent = ROLE[r.id] || '';
@@ -962,7 +979,7 @@ function setMax(on){
   document.body.style.overflow = on ? 'hidden' : '';
   $('tMax').setAttribute('aria-pressed', on);
   $('tMax').textContent = on ? 'Exit full screen' : 'Full screen';
-  renderBlue();
+  renderBlue(); renderPick();
 }
 function goTo(id){
   if ($('viewer').classList.contains('max')) setMax(false);
@@ -1025,7 +1042,7 @@ function init3d(){
       hit = rc.intersectObjects(meshes, false)[0];
       if (hit) break;
     }
-    if (hit) select(hit.object.userData.part, hit.object);
+    if (hit) select(hit.object.userData.part, hit.object, true);
     else select(null);
   });
   (function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); placeLabel(); })();
@@ -1179,7 +1196,8 @@ function markRelated(){
     rail.scrollTo({top: Math.max(0, top), behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
   }
 }
-function select(part, mesh){
+function select(part, mesh, byUser){
+  if (byUser && part) { bpHidden = false; if (part !== selected) bpFull = false; }
   selected = part;
   if (part) shown = part;
   highlight();
@@ -1412,7 +1430,9 @@ $('mCuts').addEventListener('click', () => goTo('pieceCard'));
 $('copy').addEventListener('click', copyList);
 $('tRafters').addEventListener('click', e => { showRafters = !showRafters; e.currentTarget.setAttribute('aria-pressed', showRafters); visibility(); });
 $('tBraces').addEventListener('click', e => { showBraces = !showBraces; e.currentTarget.setAttribute('aria-pressed', showBraces); visibility(); });
-$('bpClose').addEventListener('click', () => select(null));
+// closing hides the blueprint but keeps the piece selected and measured
+$('bpClose').addEventListener('click', () => { bpHidden = true; renderBlue(); renderPick(); });
+$('bpMore').addEventListener('click', () => { bpFull = !bpFull; renderBlue(); $('blueprint').scrollTop = 0; });
 $('pGo').addEventListener('click', downloadStl);
 $('pdfBtn').addEventListener('click', async e => {
   const b = e.currentTarget; if (b.disabled) return;
