@@ -99,7 +99,7 @@ function checkLayout(p, g) {
 
 function checkCutList(p, g) {
   const L = R.parts(g, p), get = id => L.find(r => r.id === id);
-  near(get('posts').len, p.H + p.jd + p.embed, 'post length includes the stub'); assert.equal(get('posts').qty, 4);
+  near(get('posts').len, p.H + p.bh + p.embed, 'post length includes the block'); assert.equal(get('posts').qty, 4);
   near(get('plates').len, g.Lt, 'eaves beam length'); near(get('ridge').len, g.Lt, 'ridge beam length');
   near(get('ties').len - 2 * p.jc, p.W, 'cross beam spans the clear width plus a tongue into each post');
   const rafters = L.filter(r => r.id === 'rafC' || r.id === 'rafF');
@@ -159,7 +159,7 @@ test('STL kit and model are closed solids with the right volume and size', () =>
     // independent volume: each piece's outline area times thickness, from the profiles
     const pr = R.printProfiles(g, p), k3 = Math.pow(1 / scale, 3);
     const nRaf = g.raf.reduce((s, r) => s + 2 * (r.f ? p.rtf : p.rt), 0);
-    let v = 4 * shoelace(R.postProfile(p, true)) * p.b + 2 * shoelace(pr.plate) * p.b + 2 * shoelace(pr.tie) * p.b
+    let v = 4 * (p.b * p.b * (p.H + p.embed) + p.jc * p.jz * p.bh) + 2 * shoelace(pr.plate) * p.bh + 2 * shoelace(pr.tie) * p.bh
       + 2 * p.b * p.b * g.kp + g.Lt * p.ridgeH * p.ridgeW + shoelace(g.prof) * nRaf
       + ((p.braceT ? 4 : 0) + (p.braceL ? 4 : 0)) * shoelace(pr.brace) * p.bt;
     near(volume(kit.tris), v * k3, `kit 1:${scale} volume`, v * k3 * 1e-6);
@@ -243,32 +243,37 @@ test('mm, cm and inch display read back to the true length', () => {
   R.setUnit('mm');
 });
 
-test('post-top joint: stub and tongue fill the U-cut exactly, nothing overlaps, beam tops flush', () => {
+test('post-top joint: block, tongue and eaves beam fill the post top exactly, nothing overlaps, all flush', () => {
   const inPoly = (pt, poly) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
     const [xi, yi] = poly[i], [xj, yj] = poly[j];
     if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi) c = !c; } return c; };
-  for (const over of [{}, { b: 150, bh: 200, jd: 80, jc: 50 }, { Og: 250 }, { W: 4000, Lc: 3000, jd: 40, jc: 90 }]) {
-    const { p, g } = setup(over), pr = R.printProfiles(g, p), post = R.postProfile(p, false);
-    const fz = g.frameZ, x0 = p.W / 2, H = p.H;
-    // the three pieces at the front-right post, as solids in the world (mm)
-    const inPost = ([x, y, z]) => Math.abs(z - fz) < p.b / 2 && inPoly([x - x0, y], post);
-    const inPlate = ([x, y, z]) => x > x0 && x < x0 + p.b && inPoly([z + g.Lt / 2, y - H], pr.plate);
-    const inTie = ([x, y, z]) => Math.abs(z - fz) < p.b / 2 && inPoly([x + pr.T / 2, y - H], pr.tie);
-    const n = 28; let overlaps = 0, holes = 0, inside = 0;
-    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let k = 0; k < n; k++) {
-      // sample a box around the joint, off the grid lines so points never sit exactly on a face
-      const x = x0 - 150 + (p.b + 300) * (i + 0.37) / n, y = H - 100 + (p.bh + 200) * (j + 0.41) / n, z = fz - p.b / 2 - 100 + (p.b + 200) * (k + 0.43) / n;
-      const hits = [inPost, inPlate, inTie].filter(f => f([x, y, z])).length;
-      if (hits > 1) overlaps++;
-      const inUcut = x > x0 && x < x0 + p.b && Math.abs(z - fz) < p.b / 2 && y > H && y < H + p.jd;
-      if (inUcut) { inside++; if (hits !== 1) holes++; }
+  const inPrism = (q, [x, y, z]) => q.plane === 'xy' ? (z > q.lo && z < q.hi && inPoly([x, y], q.pts)) : (y > q.lo && y < q.hi && inPoly([x, z], q.pts));
+  for (const over of [{}, { b: 150, bh: 200, jc: 50, jz: 90 }, { Og: 250 }, { W: 4000, Lc: 3000, jc: 90, jz: 40 }]) {
+    const { p, g } = setup(over), pieces = R.framePieces(g, p);
+    const which = pt => pieces.filter(f => f.prisms.some(q => inPrism(q, pt))).map(f => f.part);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      const x0 = sx * p.W / 2, fz = sz * g.frameZ, H = p.H;
+      const n = 22; let overlaps = 0, holes = 0;
+      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let k = 0; k < n; k++) {
+        const u = (i + 0.37) / n, v = (j + 0.41) / n, w = (k + 0.43) / n;
+        const pt = [x0 + sx * (-100 + (p.b + 160) * u), H - 120 + (p.bh + 180) * v, fz - p.b / 2 - 90 + (p.b + 180) * w];
+        const hits = which(pt);
+        if (hits.length > 1) overlaps++;
+        const overPost = sx * (pt[0] - x0) > 0 && sx * (pt[0] - x0) < p.b && Math.abs(pt[2] - fz) < p.b / 2 && pt[1] > H - 120 && pt[1] < H + p.bh;
+        if (overPost && hits.length !== 1) holes++;
+      }
+      assert.equal(overlaps, 0, `no point is inside two pieces (post ${sx},${sz})`);
+      assert.equal(holes, 0, `the post and everything over it is solid, no gaps (post ${sx},${sz})`);
+      // each corner of the post top holds the right piece; the gable side is away from the middle
+      const top = H + p.bh / 2, gableZ = fz + sz * (p.b / 2 - p.jz / 2), middleZ = fz - sz * (p.b / 2 - (p.b - p.jz) / 2);
+      assert.deepEqual(which([x0 + sx * p.jc / 2, top, gableZ]), ['posts'], 'block in the inside, gable-end corner');
+      assert.deepEqual(which([x0 + sx * p.jc / 2, top, middleZ]), ['ties'], 'cross beam tongue in the inside, middle-side corner');
+      assert.deepEqual(which([x0 + sx * (p.jc + (p.b - p.jc) / 2), top, fz]), ['plates'], 'eaves beam on the outer half');
     }
-    assert.equal(overlaps, 0, 'no point is inside two pieces');
-    assert.ok(inside > 50, 'sampled inside the U-cut'); assert.equal(holes, 0, 'the U-cut is filled by the stub and the tongue, no gaps');
-    near(Math.max(...pr.tie.map(q => q[1])), p.bh, 'cross beam top flush with eaves beam top');
-    near(pr.T - 2 * p.jc, p.W, 'cross beam full-height part fits between the eaves beams');
-    const postFromEnd = g.Lt / 2 - g.frameZ - p.b / 2, notchStart = pr.plate[1][0];
-    near(notchStart, postFromEnd, 'U-cut sits over the post');
+    // all flush on top, all sitting on the shoulder
+    const tops = pieces.map(f => f.prisms.map(q => q.plane === 'xy' ? Math.max(...q.pts.map(t => t[1])) : q.hi));
+    near(Math.max(...tops[0]), p.H + p.bh, 'block top'); pieces.filter(f => f.part !== 'posts').forEach(f => near(f.prisms[0].hi, p.H + p.bh, f.name + ' top flush'));
+    pieces.filter(f => f.part !== 'posts').forEach(f => near(f.prisms[0].lo, p.H, f.name + ' sits on the shoulder'));
   }
 });
 
@@ -310,7 +315,7 @@ test('roof triangle: run, rise and rafter line obey Pythagoras and add up to the
 });
 
 test('tapping a size highlights a line in the model exactly that long, or an arc of exactly that angle', () => {
-  const lengths = ['W', 'Lc', 'H', 'b', 'bh', 'jd', 'jc', 'embed', 'Oe', 'Og', 'ridgeW', 'ridgeH', 'rt', 'rtf', 'rd', 'hb', 'hr', 'bDrop', 'be', 'bt'];
+  const lengths = ['W', 'Lc', 'H', 'b', 'bh', 'jc', 'jz', 'embed', 'Oe', 'Og', 'ridgeW', 'ridgeH', 'rt', 'rtf', 'rd', 'hb', 'hr', 'bDrop', 'be', 'bt'];
   const len3 = ([A, B]) => Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]);
   for (const over of [{}, { embed: 400, pitch: 30 }, { rtf: 90, bAng: 35, ridgeNotch: false }]) {
     const { p, g } = setup(over);
@@ -379,11 +384,11 @@ test('assembly fit: every piece rests exactly on the piece under it (400 random 
     const { p, g } = setup(over);
     if (g.kp <= 0) continue;                       // the app warns about this case
     const pr = R.printProfiles(g, p), P = g.prof, rw2 = p.ridgeW / 2;
-    const plateTop = p.H + p.bh, tieTop = p.H + Math.max(...pr.tie.map(q => q[1]));
+    const plateTop = p.H + p.bh, tieTop = R.framePieces(g, p).find(f => f.part === 'ties').prisms[0].hi;
     const gaps = {
-      'eaves beam U-cut on post stub': (p.H + p.jd) - Math.max(...R.postProfile(p, false).map(q => q[1])),
-      'cross beam tongue on post shoulder': (p.H + Math.min(...pr.tie.map(q => q[1]))) - R.postProfile(p, false)[4][1],
-      'eaves beam on post shoulder line': (p.H + Math.min(...pr.plate.map(q => q[1]))) - p.H,
+      'eaves beam on post shoulder': R.framePieces(g, p).find(f => f.part === 'plates').prisms[0].lo - p.H,
+      'cross beam on post shoulder': R.framePieces(g, p).find(f => f.part === 'ties').prisms[0].lo - p.H,
+      'post block flush with eaves beam': Math.max(...R.framePieces(g, p)[0].prisms[1].pts.map(t => t[1])) - plateTop,
       'cross beam top flush with eaves beam top': tieTop - plateTop,
       'ridge post on cross beam': g.z0 - tieTop,
       'ridge beam on ridge post': (g.zR - p.ridgeH) - (g.z0 + g.kp),
@@ -421,10 +426,10 @@ test('corner relief: inside corners are cleared, bearing faces stay where they w
   }
 });
 
-test('joint close-up labels the stub, tongue and U-cut sizes', () => {
-  for (const over of [{}, { b: 150, jd: 80, jc: 50 }]) {
+test('joint close-up labels the block, tongue and U-cut sizes', () => {
+  for (const over of [{}, { b: 150, jz: 80, jc: 50 }]) {
     const { p, g } = setup(over), svg = R.jointSVG(g, p, 600);
-    const nums = [...svg.matchAll(/class="c"[^>]*>(?:U-cut )?([\d,]+)(?: deep)?</g)].map(m => +m[1].replace(/,/g, ''));
-    [p.jc, p.b - p.jc, p.jd].forEach(v => assert.ok(nums.includes(Math.round(v)), `close-up shows ${v}`));
+    const nums = [...svg.matchAll(/class="c"[^>]*>([\d,]+)</g)].map(m => +m[1].replace(/,/g, ''));
+    [p.jc, p.b - p.jc, p.jz, p.b - p.jz].forEach(v => assert.ok(nums.includes(Math.round(v)), `close-up shows ${v}`));
   }
 });
