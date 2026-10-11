@@ -1012,7 +1012,7 @@ function jointSVG(g,p,W){
   h += hdim(X(c), X(b), Z(0) - 10, f0(b - c), 'c');
   const vx = X(b) + 16, vl = (z0, z1, t) => '<line class="dim" x1="'+vx+'" y1="'+Z(z0)+'" x2="'+vx+'" y2="'+Z(z1)+'"/><line class="dim" x1="'+(vx-5)+'" y1="'+Z(z0)+'" x2="'+(vx+5)+'" y2="'+Z(z0)+'"/><line class="dim" x1="'+(vx-5)+'" y1="'+Z(z1)+'" x2="'+(vx+5)+'" y2="'+Z(z1)+'"/><text class="c" x="'+(vx+8)+'" y="'+((Z(z0)+Z(z1))/2+4).toFixed(1)+'">'+t+'</text>';
   h += vl(0, jz, f0(jz)) + vl(jz, b, f0(b - jz));
-  h += '<text class="m" x="'+PAD+'" y="'+(Z(zmax) + 40).toFixed(1)+'">Post top from above. Block, tongue and eaves beam are all '+f0(p.bh)+' tall, flush on top.</text>';
+  h += '<text class="m" x="'+PAD+'" y="'+(Z(zmax) + 40).toFixed(1)+'">All three are '+f0(p.bh)+' tall, flush on top.</text>';
   return svg(W, Z(zmax) + 50, h, 'Post-top joint from above');
 }
 function triangleSVG(g,p,W){
