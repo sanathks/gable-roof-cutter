@@ -265,9 +265,10 @@ test('post-top joint: block, tongue and eaves beam fill the post top exactly, no
       assert.equal(overlaps, 0, `no point is inside two pieces (post ${sx},${sz})`);
       assert.equal(holes, 0, `the post and everything over it is solid, no gaps (post ${sx},${sz})`);
       // each corner of the post top holds the right piece; the gable side is away from the middle
-      const top = H + p.bh / 2, gableZ = fz + sz * (p.b / 2 - p.jz / 2), middleZ = fz - sz * (p.b / 2 - (p.b - p.jz) / 2);
-      assert.deepEqual(which([x0 + sx * p.jc / 2, top, gableZ]), ['posts'], 'block in the inside, gable-end corner');
-      assert.deepEqual(which([x0 + sx * p.jc / 2, top, middleZ]), ['ties'], 'cross beam tongue in the inside, middle-side corner');
+      // the gable end is away from the middle of the roof (z = 0)
+      const top = H + p.bh / 2, middleZ = fz - sz * (p.b / 2 - p.jz / 2), gableZ = fz + sz * (p.b / 2 - (p.b - p.jz) / 2);
+      assert.deepEqual(which([x0 + sx * p.jc / 2, top, middleZ]), ['posts'], 'block in the inside corner towards the middle of the roof');
+      assert.deepEqual(which([x0 + sx * p.jc / 2, top, gableZ]), ['ties'], 'cross beam tongue in the inside, gable-end corner');
       assert.deepEqual(which([x0 + sx * (p.jc + (p.b - p.jc) / 2), top, fz]), ['plates'], 'eaves beam on the outer half');
     }
     // all flush on top, all sitting on the shoulder
