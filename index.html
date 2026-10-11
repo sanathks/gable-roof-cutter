@@ -1771,7 +1771,8 @@ async function makePdf(check){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({unit:'mm', format:'a4'});
   const M = 14, PW = 210, PH = 297, CW = PW - 2*M, INK = [28,35,32], CHALK = [29,91,208], MUTED = [89,99,94], WARN = [176,90,0];
-  const strip = t => t.replace(/<[^>]+>/g, '');
+  // the PDF's built-in fonts only cover Western European characters; anything else would scramble the whole line
+  const strip = t => t.replace(/<[^>]+>/g, '').replace(/√/g, 'sqrt').replace(/←/g, '<-').replace(/[–—]/g, '-');
   let y = M;
   const color = c => doc.setTextColor(c[0], c[1], c[2]);
   const font = (f, st, sz) => { doc.setFont(f, st); doc.setFontSize(sz); };
@@ -1812,7 +1813,7 @@ async function makePdf(check){
   // sizes used
   heading('Roof triangle', 13);
   { const img = await svgToPng(triangleSVG(G, PP, 640), 2.5); image(img.url, CW, CW*img.h/img.w, 'PNG', 70); }
-  triangleFactsList(G, PP).forEach(([k,v]) => para(k+':  '+v.replace(/<[^>]+>/g,''), 9.5, INK));
+  triangleFactsList(G, PP).forEach(([k,v]) => para(k+':  '+v, 9.5, INK));
   y += 2;
   heading('Sizes used', 13);
   GROUPS.forEach(gr => {
