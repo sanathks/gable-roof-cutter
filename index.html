@@ -962,19 +962,19 @@ function jointSVG(g,p,W){
   h += '<polygon class="ghost" points="'+poly([[x0, H+U], [x0+b, H+U], [x0+b, H+j+U], [x0, H+j+U]].map(([x,y]) => [X(x), Y(y)]))+'"/>';
   const T = (x, y, t, cls, anchor) => '<text'+(cls ? ' class="'+cls+'"' : '')+' x="'+X(x).toFixed(1)+'" y="'+Y(y).toFixed(1)+'"'+(anchor ? ' text-anchor="'+anchor+'"' : '')+'>'+t+'</text>';
   h += T(x0 + b/2, H + bh + U + 14/s, 'eaves beam', 'n', 'middle');
-  h += T(x0 + b/2, H + j/2 + U - 4/s, 'U-cut '+f0(j)+' deep', 'c', 'middle');
+  h += T(x0 + b + 8/s, H + j/2 + U - 4/s, 'U-cut '+f0(j)+' deep', 'c');
   h += T(x0 + c + (b-c)/2, H + j/2 - 4/s, 'stub', 'c', 'middle');
-  h += T(x0 + c/2, H - 16/s, 'shoulder', 'm', 'middle');
+  h += T(x0 + c/2, H + 6/s, 'shoulder', 'm', 'middle');
   h += T(L - tail + 8/s, H + bh/2 - 4/s, 'cross beam', 'n');
-  h += T(L + c/2, H + j + 14/s, 'tongue', 'c', 'middle');
+  h += T(L + c/2, H + j + 8/s, 'tongue', 'c', 'middle');
   h += T(x0 + b/2, ymin + 14/s, 'post', 'n', 'middle');
   // sizes
   h += hdim(X(L), X(L + c), Y(H) + 18, f0(c), 'c');
-  h += hdim(X(x0 + c), X(x0 + b), Y(H + j) - 10, f0(b - c), 'c');
+  h += hdim(X(x0 + c), X(x0 + b), Y(ymin) - 28, f0(b - c), 'c');
   const vx = X(x0 + b) + 22;
   h += '<line class="dim" x1="'+vx+'" y1="'+Y(H)+'" x2="'+vx+'" y2="'+Y(H+j)+'"/><line class="dim" x1="'+(vx-5)+'" y1="'+Y(H)+'" x2="'+(vx+5)+'" y2="'+Y(H)+'"/><line class="dim" x1="'+(vx-5)+'" y1="'+Y(H+j)+'" x2="'+(vx+5)+'" y2="'+Y(H+j)+'"/>';
   h += '<text class="c" x="'+(vx+8)+'" y="'+((Y(H)+Y(H+j))/2+4).toFixed(1)+'">'+f0(j)+'</text>';
-  h += '<text class="m" x="'+PAD+'" y="'+(Y(ymin) + 22).toFixed(1)+'">Section through a post, from the gable end. Pieces pulled apart to show the cuts.</text>';
+  h += '<text class="m" x="'+PAD+'" y="'+(Y(ymin) + 22).toFixed(1)+'">Section through a post, pieces pulled apart.</text>';
   return svg(W, Y(ymin) + 30, h, 'Post-top joint close-up');
 }
 function triangleSVG(g,p,W){
