@@ -99,9 +99,9 @@ function checkLayout(p, g) {
 
 function checkCutList(p, g) {
   const L = R.parts(g, p), get = id => L.find(r => r.id === id);
-  near(get('posts').len, p.H + p.embed, 'post length'); assert.equal(get('posts').qty, 4);
+  near(get('posts').len, p.H + p.jd + p.embed, 'post length includes the stub'); assert.equal(get('posts').qty, 4);
   near(get('plates').len, g.Lt, 'eaves beam length'); near(get('ridge').len, g.Lt, 'ridge beam length');
-  near(get('ties').len - 2 * p.b, p.W, 'cross beam spans the clear width plus both posts');
+  near(get('ties').len - 2 * p.jc, p.W, 'cross beam spans the clear width plus a tongue into each post');
   const rafters = L.filter(r => r.id === 'rafC' || r.id === 'rafF');
   assert.equal(rafters.reduce((s, r) => s + r.qty, 0), 2 * g.raf.length, 'one rafter each side per position');
   rafters.forEach(r => near(r.len, dist(g.prof[0], g.prof[1]), 'rafter cut length'));
@@ -159,7 +159,7 @@ test('STL kit and model are closed solids with the right volume and size', () =>
     // independent volume: each piece's outline area times thickness, from the profiles
     const pr = R.printProfiles(g, p), k3 = Math.pow(1 / scale, 3);
     const nRaf = g.raf.reduce((s, r) => s + 2 * (r.f ? p.rtf : p.rt), 0);
-    let v = 4 * p.b * p.b * (p.H + p.embed) + 2 * shoelace(pr.plate) * p.b + 2 * shoelace(pr.tie) * p.b
+    let v = 4 * shoelace(R.postProfile(p, true)) * p.b + 2 * shoelace(pr.plate) * p.b + 2 * shoelace(pr.tie) * p.b
       + 2 * p.b * p.b * g.kp + g.Lt * p.ridgeH * p.ridgeW + shoelace(g.prof) * nRaf
       + ((p.braceT ? 4 : 0) + (p.braceL ? 4 : 0)) * shoelace(pr.brace) * p.bt;
     near(volume(kit.tris), v * k3, `kit 1:${scale} volume`, v * k3 * 1e-6);
@@ -243,21 +243,32 @@ test('mm, cm and inch display read back to the true length', () => {
   R.setUnit('mm');
 });
 
-test('eaves beam and cross beam halving notches lock together at every post', () => {
-  for (const over of [{}, { b: 150, bh: 200 }, { Og: 0 }, { W: 4000, Lc: 3000 }]) {
-    const { p, g } = setup(over), pr = R.printProfiles(g, p);
-    // notch floors in the eaves beam (top) and ends of the cross beam (bottom)
-    const plateFloor = Math.min(...pr.plate.map(q => q[1]).filter(v => v > 0));
-    const tieStep = Math.max(...pr.tie.map(q => q[1]).filter(v => v < p.bh));
-    near(plateFloor + (p.bh - tieStep), p.bh, 'the two notch depths add up to the beam height, so the tops are flush');
-    const plateNotches = []; for (let i = 0; i < pr.plate.length; i++) { const [a, b] = [pr.plate[i], pr.plate[(i + 1) % pr.plate.length]]; if (a[1] === plateFloor && b[1] === plateFloor) plateNotches.push([Math.min(a[0], b[0]), Math.max(a[0], b[0])]); }
-    assert.equal(plateNotches.length, 2, 'one notch over each post');
-    plateNotches.forEach(([x0, x1]) => near(x1 - x0, p.b, 'eaves beam notch is as wide as the cross beam'));
-    const postsFromEnd = [g.Lt / 2 - g.frameZ - p.b / 2, g.Lt / 2 + g.frameZ - p.b / 2];
-    plateNotches.sort((a, b) => a[0] - b[0]).forEach(([x0], i) => near(x0, postsFromEnd[i], 'notch sits over the post'));
-    const tieEnds = pr.tie.filter(q => q[1] === tieStep).map(q => q[0]).sort((a, b) => a - b);
-    near(tieEnds[1] - tieEnds[0], p.b, 'cross beam end notch is as long as the eaves beam is wide');
-    near(pr.T, p.W + 2 * p.b, 'cross beam runs over both eaves beams');
+test('post-top joint: stub and tongue fill the U-cut exactly, nothing overlaps, beam tops flush', () => {
+  const inPoly = (pt, poly) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi) c = !c; } return c; };
+  for (const over of [{}, { b: 150, bh: 200, jd: 80, jc: 50 }, { Og: 250 }, { W: 4000, Lc: 3000, jd: 40, jc: 90 }]) {
+    const { p, g } = setup(over), pr = R.printProfiles(g, p), post = R.postProfile(p, false);
+    const fz = g.frameZ, x0 = p.W / 2, H = p.H;
+    // the three pieces at the front-right post, as solids in the world (mm)
+    const inPost = ([x, y, z]) => Math.abs(z - fz) < p.b / 2 && inPoly([x - x0, y], post);
+    const inPlate = ([x, y, z]) => x > x0 && x < x0 + p.b && inPoly([z + g.Lt / 2, y - H], pr.plate);
+    const inTie = ([x, y, z]) => Math.abs(z - fz) < p.b / 2 && inPoly([x + pr.T / 2, y - H], pr.tie);
+    const n = 28; let overlaps = 0, holes = 0, inside = 0;
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let k = 0; k < n; k++) {
+      // sample a box around the joint, off the grid lines so points never sit exactly on a face
+      const x = x0 - 150 + (p.b + 300) * (i + 0.37) / n, y = H - 100 + (p.bh + 200) * (j + 0.41) / n, z = fz - p.b / 2 - 100 + (p.b + 200) * (k + 0.43) / n;
+      const hits = [inPost, inPlate, inTie].filter(f => f([x, y, z])).length;
+      if (hits > 1) overlaps++;
+      const inUcut = x > x0 && x < x0 + p.b && Math.abs(z - fz) < p.b / 2 && y > H && y < H + p.jd;
+      if (inUcut) { inside++; if (hits !== 1) holes++; }
+    }
+    assert.equal(overlaps, 0, 'no point is inside two pieces');
+    assert.ok(inside > 50, 'sampled inside the U-cut'); assert.equal(holes, 0, 'the U-cut is filled by the stub and the tongue, no gaps');
+    near(Math.max(...pr.tie.map(q => q[1])), p.bh, 'cross beam top flush with eaves beam top');
+    near(pr.T - 2 * p.jc, p.W, 'cross beam full-height part fits between the eaves beams');
+    const postFromEnd = g.Lt / 2 - g.frameZ - p.b / 2, notchStart = pr.plate[1][0];
+    near(notchStart, postFromEnd, 'U-cut sits over the post');
   }
 });
 
@@ -299,7 +310,7 @@ test('roof triangle: run, rise and rafter line obey Pythagoras and add up to the
 });
 
 test('tapping a size highlights a line in the model exactly that long, or an arc of exactly that angle', () => {
-  const lengths = ['W', 'Lc', 'H', 'b', 'bh', 'embed', 'Oe', 'Og', 'ridgeW', 'ridgeH', 'rt', 'rtf', 'rd', 'hb', 'hr', 'bDrop', 'be', 'bt'];
+  const lengths = ['W', 'Lc', 'H', 'b', 'bh', 'jd', 'jc', 'embed', 'Oe', 'Og', 'ridgeW', 'ridgeH', 'rt', 'rtf', 'rd', 'hb', 'hr', 'bDrop', 'be', 'bt'];
   const len3 = ([A, B]) => Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]);
   for (const over of [{}, { embed: 400, pitch: 30 }, { rtf: 90, bAng: 35, ridgeNotch: false }]) {
     const { p, g } = setup(over);
@@ -370,7 +381,9 @@ test('assembly fit: every piece rests exactly on the piece under it (400 random 
     const pr = R.printProfiles(g, p), P = g.prof, rw2 = p.ridgeW / 2;
     const plateTop = p.H + p.bh, tieTop = p.H + Math.max(...pr.tie.map(q => q[1]));
     const gaps = {
-      'eaves beam on post': (p.H + Math.min(...pr.plate.map(q => q[1]))) - p.H,
+      'eaves beam U-cut on post stub': (p.H + p.jd) - Math.max(...R.postProfile(p, false).map(q => q[1])),
+      'cross beam tongue on post shoulder': (p.H + Math.min(...pr.tie.map(q => q[1]))) - R.postProfile(p, false)[4][1],
+      'eaves beam on post shoulder line': (p.H + Math.min(...pr.plate.map(q => q[1]))) - p.H,
       'cross beam top flush with eaves beam top': tieTop - plateTop,
       'ridge post on cross beam': g.z0 - tieTop,
       'ridge beam on ridge post': (g.zR - p.ridgeH) - (g.z0 + g.kp),

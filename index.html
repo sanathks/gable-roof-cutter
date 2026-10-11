@@ -360,7 +360,7 @@ tfoot td{font-weight:600;border-bottom:0}
 <script>
 (function(){
 const $ = id => document.getElementById(id);
-const DEF = {W:2080,Lc:2100,H:2600,b:120,bh:120,embed:0,pitch:40,Oe:450,Og:400,ridgeW:120,ridgeH:120,
+const DEF = {W:2080,Lc:2100,H:2600,b:120,bh:120,jd:60,jc:60,embed:0,pitch:40,Oe:450,Og:400,ridgeW:120,ridgeH:120,
   rt:60,rd:120,rtf:120,maxSp:800,hb:48,ridgeNotch:true,hr:50,bAng:45,bDrop:435,be:120,bt:120,braceT:true,braceL:true,gauge:320};
 const GROUPS = [
   {t:'Frame', f:[
@@ -369,6 +369,8 @@ const GROUPS = [
     ['H','Post height','mm','Ground to top of post, which is the underside of the beams.'],
     ['b','Post size','mm','Square. The eaves beams and cross beams are this wide too.'],
     ['bh','Beam height','mm','Eaves beams and cross beams.'],
+    ['jd','Post stub height','mm','How far the post goes up into the U-cut under the eaves beam.'],
+    ['jc','Cross beam tongue','mm','How far each end of the cross beam goes into the post.'],
     ['embed','Extra post length','mm','For a post base or concrete. 0 if none.']]},
   {t:'Roof', f:[
     ['pitch','Roof pitch','°','Angle of the roof from level.'],
@@ -406,9 +408,9 @@ const PART = {
 };
 
 const ROLE = {
-  posts:'Post. Carries the whole roof down to the ground, one at each corner.',
-  plates:'Eaves beam (wall plate). Runs along the post tops on each long side. The bottom of every rafter sits on it, notched over it with the birdsmouth.',
-  ties:'Cross beam (tie beam). Joins the two sides across the post tops so the roof cannot spread apart, and carries the ridge post.',
+  posts:'Post. Carries the whole roof down to the ground, one at each corner. Its top is cut to a stub that goes up into the eaves beam, with a shoulder beside it for the cross beam tongue.',
+  plates:'Eaves beam (wall plate). Runs along the post tops on each long side, with a U-cut underneath that drops over each post. The bottom of every rafter sits on it, notched over it with the birdsmouth.',
+  ties:'Cross beam (tie beam). Joins the two sides so the roof cannot spread apart, and carries the ridge post. Each end has a tongue that sits on the post shoulder, under the eaves beam.',
   king:'Ridge post (king post). Stands on the middle of the cross beam and holds up the ridge beam.',
   ridge:'Ridge beam (ridge purlin). Runs along the peak. The top of every rafter sits on it.',
   rafF:'Rafter over a post. The sloping piece that carries the roof covering from the ridge down past the eaves. Same cuts as the other rafters.',
@@ -417,7 +419,7 @@ const ROLE = {
   braceL:'Knee brace, along. The short diagonal between a post and the eaves beam. It stops the frame swaying along its length (racking).'
 };
 const RELATED = {
-  posts:['H','b','embed','bDrop'], plates:['Lc','b','bh','Og'], ties:['W','b','bh'], king:['b','bh','ridgeH','hr','pitch'],
+  posts:['H','b','jd','jc','embed','bDrop'], plates:['Lc','b','bh','Og','jd'], ties:['W','b','bh','jd','jc'], king:['b','bh','ridgeH','hr','pitch'],
   ridge:['ridgeW','ridgeH','Lc','Og'], rafF:['pitch','Oe','rtf','rd','hb','ridgeNotch','hr'], rafC:['pitch','Oe','rt','rd','maxSp','hb','ridgeNotch','hr'],
   braceT:['bAng','bDrop','be','bt','braceT'], braceL:['bAng','bDrop','be','bt','braceL']
 };
@@ -449,6 +451,7 @@ function sane(p){
   q.pitch = Math.min(75, Math.max(5, q.pitch));
   q.bAng = Math.min(75, Math.max(15, q.bAng));
   ['W','Lc','H','b','bh','ridgeW','ridgeH','rt','rd','rtf','be','bt','bDrop'].forEach(k => q[k] = Math.max(10, q[k]));
+  q.jd = Math.min(Math.max(10, q.jd), q.bh - 10); q.jc = Math.min(Math.max(10, q.jc), q.b - 10);
   ['embed','Oe','Og','hb','hr','gauge'].forEach(k => q[k] = Math.max(0, q[k]));
   if (q.ridgeNotch === false) q.hr = 0;   // switched off: rafters sit straight on the ridge beam (the depth is kept for later)
   q.maxSp = Math.max(200, q.maxSp);
@@ -500,9 +503,9 @@ function parts(g,p){
   const nF = g.raf.filter(r=>r.f).length*2, nC = g.raf.filter(r=>!r.f).length*2;
   const sameW = p.rtf === p.rt;
   const L = [];
-  L.push({id:'posts',qty:4,w:p.b,h:p.b,len:p.H+p.embed,note:'Square cuts. Brace marks on the two inside faces.'+(p.embed>0?' Includes '+f0(p.embed)+' '+UL()+' below ground.':'')});
-  L.push({id:'plates',qty:2,w:p.b,h:p.bh,len:g.Lt,note:'Full length. Halving notch on top over each post, '+f0(p.Og)+' from each end.'});
-  L.push({id:'ties',qty:2,w:p.b,h:p.bh,len:p.W+2*p.b,note:'Across the post tops. Halving notch underneath at each end.'});
+  L.push({id:'posts',qty:4,w:p.b,h:p.b,len:p.H+p.jd+p.embed,note:'Top cut to a stub '+f0(p.b-p.jc)+' × '+f0(p.jd)+' with a shoulder for the cross beam. Brace marks on the two inside faces.'+(p.embed>0?' Includes '+f0(p.embed)+' '+UL()+' below ground.':'')});
+  L.push({id:'plates',qty:2,w:p.b,h:p.bh,len:g.Lt,note:'Full length. U-cut underneath over each post, '+f0(p.b)+' long and '+f0(p.jd)+' deep, '+f0(p.Og)+' from each end.'});
+  L.push({id:'ties',qty:2,w:p.b,h:p.bh,len:p.W+2*p.jc,note:'Between the eaves beams. A tongue '+f0(p.jc)+' long and '+f0(p.jd)+' tall at each end goes into the post.'});
   if (g.kp > 0) L.push({id:'king',qty:2,w:p.b,h:p.b,len:g.kp,note:'Shoulder to shoulder. Add tenons if you joint it into the beams.'});
   L.push({id:'ridge',qty:1,w:p.ridgeW,h:p.ridgeH,len:g.Lt,note:p.hr > 0 ? 'Full length. Rafters are notched down onto its top.' : 'Full length. Rafters sit on its top edges; fix each one with a screw or a rafter bracket.'});
   if (sameW) {
@@ -561,7 +564,9 @@ function triangulate(pts){
       const ia = idx[(i-1+idx.length)%idx.length], ib = idx[i], ic = idx[(i+1)%idx.length];
       const a = pts[ia], b = pts[ib], c = pts[ic];
       if (cross(a,b,c) <= 1e-9) continue;
-      if (idx.some(j => j!==ia && j!==ib && j!==ic && inside(pts[j],a,b,c))) continue;
+      // a corner strictly inside the ear, or lying on the new edge c-a, would leave a crack in the STL surface
+      const onNewEdge = q => Math.abs(cross(c,a,q)) < 1e-9 && (q[0]-c[0])*(q[0]-a[0]) + (q[1]-c[1])*(q[1]-a[1]) < -1e-9;
+      if (idx.some(j => j!==ia && j!==ib && j!==ic && (inside(pts[j],a,b,c) || onNewEdge(pts[j])))) continue;
       tris.push([ia,ib,ic]); idx.splice(i,1); found = true; break;
     }
     if (!found) break;
@@ -600,6 +605,8 @@ function annoFor(k, g, p){
     case 'H': return line([side, 0, fz], [side, H, fz], ['posts'], 'iso');
     case 'b': return line([px - p.b/2, H*0.35, fz + p.b/2 + 20], [px + p.b/2, H*0.35, fz + p.b/2 + 20], ['posts'], 'iso');
     case 'bh': return line([side, H, g.Lt/2 - 30], [side, H + p.bh, g.Lt/2 - 30], ['plates','ties'], 'iso');
+    case 'jd': return line([px + p.b/2 + 60, H, fz], [px + p.b/2 + 60, H + p.jd, fz], ['posts','plates'], 'iso');
+    case 'jc': return line([p.W/2, H + p.jd/2, fz + p.b/2 + 20], [p.W/2 + p.jc, H + p.jd/2, fz + p.b/2 + 20], ['posts','ties'], 'front');
     case 'embed': return p.embed > 0 ? line([side, -p.embed, fz], [side, 0, fz], ['posts'], 'iso') : {main:null, at:[side, 0, fz], groups:['posts'], view:'iso'};
     case 'pitch': {
       const V = [g.xo, g.zT(g.xo), gz], r = 450;
@@ -674,10 +681,16 @@ function triangleFacts(g,p){
     perThousand:1000*rise/run, inTwelve:12*rise/run, pitch:Math.atan2(rise, run)*180/Math.PI};
 }
 // side profiles of each piece (mm), as in the cut drawings
+// post-top joint: the post rises jd into a U-cut under the eaves beam as a stub (b - jc wide, on the outer side);
+// the cross beam tongue (jc long, jd tall) sits on the post shoulder beside the stub. Stub + tongue fill the U-cut.
+function postProfile(p, withEmbed){
+  const b = p.b, c = p.jc, j = p.jd, y0 = withEmbed ? -p.embed : 0;   // x = 0 is the inner face (towards the cross beam)
+  return [[0,y0],[b,y0],[b,p.H+j],[c,p.H+j],[c,p.H],[0,p.H]];
+}
 function printProfiles(g,p){
-  const b = p.b, bh = p.bh, d = bh/2, T = p.W + 2*b, Lt = g.Lt, Og = p.Og;
-  const plate = [[0,0],[Lt,0],[Lt,bh],[Lt-Og,bh],[Lt-Og,bh-d],[Lt-Og-b,bh-d],[Lt-Og-b,bh],[Og+b,bh],[Og+b,bh-d],[Og,bh-d],[Og,bh],[0,bh]];
-  const tie = [[0,d],[b,d],[b,0],[T-b,0],[T-b,d],[T,d],[T,bh],[0,bh]];
+  const b = p.b, bh = p.bh, j = p.jd, c = p.jc, T = p.W + 2*c, Lt = g.Lt, Og = p.Og;
+  const plate = [[0,0],[Og,0],[Og,j],[Og+b,j],[Og+b,0],[Lt-Og-b,0],[Lt-Og-b,j],[Lt-Og,j],[Lt-Og,0],[Lt,0],[Lt,bh],[0,bh]];
+  const tie = [[0,0],[T,0],[T,j],[T-c,j],[T-c,bh],[c,bh],[c,j],[0,j]];
   const brace = g.bk > 0 ? [[0,-p.bDrop],[g.bc,0],[g.bc*g.bk,0],[0,-p.bDrop*g.bk]] : null;
   return {plate, tie, brace, T};
 }
@@ -700,7 +713,7 @@ function relieve(pts, r){
 function printKit(g,p,scale,bedW,reliefMm){
   const k = 1/scale, gap = 3, pr = printProfiles(g,p), L = [];
   const add = (name,n,t,pts) => { if (n > 0) L.push({name,n,t,pts}); };
-  add('post',4,p.b,rectP(0,0,p.H+p.embed,p.b));
+  add('post',4,p.b,postProfile(p, true));
   add('eaves beam',2,p.b,pr.plate);
   add('cross beam',2,p.b,pr.tie);
   if (g.kp > 0) add('ridge post',2,p.b,rectP(0,0,g.kp,p.b));
@@ -737,7 +750,7 @@ function printModel(g,p,scale){
   const out = f => q => { const [x,y,z] = f(q); return [x*k, -z*k, y*k]; };   // y-up world to z-up print
   const shift = (ox,oy,oz) => out(([x,y,z]) => [x+ox, y+oy, z+oz]);
   const along = (ox,oy) => out(([u,v,w]) => [ox - w, v + oy, u]);               // profile in (z,y), thickness along x
-  [-1,1].forEach(sx => [-1,1].forEach(sz => prism(rectP(sx*px-b/2,0,sx*px+b/2,H), b, shift(0,0,sz*fz-b/2), tris)));
+  [-1,1].forEach(sx => [-1,1].forEach(sz => prism(postProfile(p, false).map(([x,y]) => [sx*(p.W/2 + x), y]), b, shift(0,0,sz*fz-b/2), tris)));
   [-1,1].forEach(sx => prism(pr.plate.map(([u,v]) => [u - g.Lt/2, v]), b, along(sx*px + b/2, H), tris));
   [-1,1].forEach(sz => prism(pr.tie, b, shift(-pr.T/2, H, sz*fz - b/2), tris));
   if (g.kp > 0) [-1,1].forEach(sz => prism(rectP(-b/2,g.z0,b/2,g.z0+g.kp), b, shift(0,0,sz*fz-b/2), tris));
@@ -993,32 +1006,34 @@ function pieceView(id, g, p, W){
   const B = s => '<b>'+s+'</b>';
   switch (id) {
     case 'posts': {
-      const L = p.H + p.embed;
-      const marks = (p.braceT || p.braceL) && g.bk > 0 ? [{x:p.bDrop}] : [];
-      return {draw:[[beamSVG({len:L, depth:p.b, marksTop:marks, hatch:p.embed>0?p.H:null, endL:'top', endR:'bottom', label:'Post'}, W),
-          'Post on its side, top on the left.'+(p.embed>0?' Shaded part goes below ground.':'')]],
+      const L = p.H + p.jd + p.embed;
+      const marks = (p.braceT || p.braceL) && g.bk > 0 ? [{x:p.jd + p.bDrop}] : [];
+      return {draw:[[beamSVG({len:L, depth:p.b, top:[{x:0, w:p.jd, d:p.jc}], marksTop:marks, marksBot:[{x:p.jd}], hatch:p.embed>0?p.H+p.jd:null, endL:'top', endR:'bottom', label:'Post'}, W),
+          'Post on its side, top on the left, inner face up. Top: brace mark. Bottom: the shoulder.'+(p.embed>0?' Shaded part goes below ground.':'')]],
         steps:['Cut to '+B(f0(L))+' '+UL()+', square at both ends.',
-          marks.length ? 'On the inside faces, mark the brace long point '+B(f0(p.bDrop))+' '+UL()+' down from the top.' : 'No braces, so no marks.',
-          p.embed>0 ? 'Mark the ground line '+B(f0(p.H))+' '+UL()+' from the top.' : 'Fix it to its post base with the top level with the others.']};
+          'At the top, on the inner face (the side facing across the roof), cut away a block '+B(f0(p.jc))+' deep and '+B(f0(p.jd))+' long. That leaves a stub '+B(f0(p.b - p.jc))+' × '+B(f0(p.b))+' on the outer side and a flat shoulder '+B(f0(p.jd))+' below the top.',
+          'The stub goes up into the U-cut under the eaves beam. The cross beam tongue sits on the shoulder beside it.',
+          marks.length ? 'On the inside faces, mark the brace long point '+B(f0(p.jd + p.bDrop))+' '+UL()+' down from the top ('+f0(p.bDrop)+' below the shoulder).' : 'No braces, so no marks.',
+          p.embed>0 ? 'Mark the ground line '+B(f0(p.H + p.jd))+' '+UL()+' from the top.' : 'Fix it to its post base with all four shoulders level.']};
     }
     case 'plates': {
-      const notches = [{x:p.Og,w:p.b,d:p.bh/2},{x:g.Lt-p.Og-p.b,w:p.b,d:p.bh/2}];
+      const notches = [{x:p.Og,w:p.b,d:p.jd},{x:g.Lt-p.Og-p.b,w:p.b,d:p.jd}];
       const bm = p.braceL && g.bk > 0 ? [{x:p.Og+p.b+g.bc},{x:g.Lt-p.Og-p.b-g.bc}] : [];
-      return {draw:[[beamSVG({len:g.Lt, depth:p.bh, top:notches, marksTop:rafterX.map(x=>({x})), marksBot:[{x:p.Og},{x:g.Lt-p.Og-p.b}].concat(bm), label:'Eaves beam'}, W),
-          'Top: rafter centres from the left end. Bottom: notch starts'+(bm.length?' and brace long points':'')+'.']],
+      return {draw:[[beamSVG({len:g.Lt, depth:p.bh, bot:notches, marksTop:rafterX.map(x=>({x})), marksBot:[{x:p.Og},{x:g.Lt-p.Og-p.b}].concat(bm), label:'Eaves beam'}, W),
+          'Top: rafter centres from the left end. Bottom: U-cut starts'+(bm.length?' and brace long points':'')+'.']],
         steps:['Cut to '+B(f0(g.Lt))+' '+UL()+'.',
-          'From each end measure '+B(f0(p.Og))+' '+UL()+'. Cut a halving notch in the top, '+B(f0(p.b))+' wide and '+B(f0(p.bh/2))+' deep. It sits over the post and takes the cross beam.',
+          'From each end measure '+B(f0(p.Og))+' '+UL()+'. Cut a U-shaped housing underneath, '+B(f0(p.b))+' long and '+B(f0(p.jd))+' deep, right through the width. It drops over the post stub and the cross beam tongue.',
           'Mark the rafter centres along the top: '+rafterX.map(x=>B(f0(x))).join(', ')+' '+UL()+' from the left end.',
           bm.length ? 'Mark the brace long points underneath at '+bm.map(m=>B(f0(m.x))).join(' and ')+' '+UL()+'.' : 'No braces along this beam.']};
     }
     case 'ties': {
-      const len = p.W + 2*p.b;
-      const notches = [{x:0,w:p.b,d:p.bh/2},{x:len-p.b,w:p.b,d:p.bh/2}];
-      const bm = p.braceT && g.bk > 0 ? [{x:p.b+g.bc},{x:len-p.b-g.bc}] : [];
-      return {draw:[[beamSVG({len, depth:p.bh, bot:notches, marksTop:[{x:len/2}], marksBot:bm, label:'Cross beam'}, W),
+      const len = p.W + 2*p.jc;
+      const notches = [{x:0,w:p.jc,d:p.bh-p.jd},{x:len-p.jc,w:p.jc,d:p.bh-p.jd}];
+      const bm = p.braceT && g.bk > 0 ? [{x:p.jc+g.bc},{x:len-p.jc-g.bc}] : [];
+      return {draw:[[beamSVG({len, depth:p.bh, top:notches, marksTop:[{x:len/2}], marksBot:bm, label:'Cross beam'}, W),
           'Top: centre of the ridge post. Bottom: brace long points.']],
         steps:['Cut to '+B(f0(len))+' '+UL()+'.',
-          'At each end cut a halving notch underneath, '+B(f0(p.b))+' long and '+B(f0(p.bh/2))+' deep. These drop into the notches on the eaves beams.',
+          'At each end cut away the top '+B(f0(p.bh - p.jd))+' over a length of '+B(f0(p.jc))+'. That leaves a tongue '+B(f0(p.jc))+' long and '+B(f0(p.jd))+' tall. The tongue sits on the post shoulder; the full-height part fits between the eaves beams.',
           'Mark the centre at '+B(f0(len/2))+' '+UL()+' for the ridge post.',
           bm.length ? 'Mark the brace long points underneath at '+bm.map(m=>B(f0(m.x))).join(' and ')+' '+UL()+'.' : 'No braces under this beam.']};
     }
@@ -1328,7 +1343,7 @@ function build3d(g,p){
   if (model) { model.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.userData.edge && o.material) o.material.dispose(); }); scene.remove(model); }
   model = new THREE.Group(); scene.add(model); keyCount = {};
   const px = p.W/2 + p.b/2, off = 90;
-  [-1,1].forEach(sx => [-1,1].forEach(sz => box('posts', p.b, p.H, p.b, sx*px, p.H/2, sz*g.frameZ,
+  [-1,1].forEach(sx => [-1,1].forEach(sz => ext('posts', postProfile(p, false).map(([x,y]) => [sx*(p.W/2 + x), y]), p.b, [0,0,(sz*g.frameZ - p.b/2)*S], 0,
     [[sx*(px+p.b/2+off), 0, sz*g.frameZ],[sx*(px+p.b/2+off), p.H, sz*g.frameZ]])));
   // eaves beams and cross beams use the same notched outlines as the cut drawings, so they lock together at the post tops
   const pr = printProfiles(g, p);
