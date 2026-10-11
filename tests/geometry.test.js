@@ -420,3 +420,11 @@ test('corner relief: inside corners are cleared, bearing faces stay where they w
     assert.ok(v1 < v0 && v0 - v1 < v0 * 0.01, 'relief removes only a tiny amount');
   }
 });
+
+test('joint close-up labels the stub, tongue and U-cut sizes', () => {
+  for (const over of [{}, { b: 150, jd: 80, jc: 50 }]) {
+    const { p, g } = setup(over), svg = R.jointSVG(g, p, 600);
+    const nums = [...svg.matchAll(/class="c"[^>]*>(?:U-cut )?([\d,]+)(?: deep)?</g)].map(m => +m[1].replace(/,/g, ''));
+    [p.jc, p.b - p.jc, p.jd].forEach(v => assert.ok(nums.includes(Math.round(v)), `close-up shows ${v}`));
+  }
+});

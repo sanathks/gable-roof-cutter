@@ -161,6 +161,7 @@ svg .raf.over{fill-opacity:.9}
 .laytable tbody tr:hover,.laytable tbody tr.sel{background:var(--chalk-soft)}
 .laytable td:nth-child(2){font-family:var(--f-body)}
 @media (max-width:760px){.laytable .hide-sm{display:none}}
+svg .ghost{fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:4 3}
 svg .tri{fill:var(--warn-soft);fill-opacity:.45;stroke:var(--chalk);stroke-width:2}
 .tri-wrap{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px;align-items:start}
 .tri-wrap svg{width:100%;height:auto;display:block;background:var(--paper);border-radius:8px;border:1px solid var(--line)}
@@ -503,7 +504,7 @@ function parts(g,p){
   const nF = g.raf.filter(r=>r.f).length*2, nC = g.raf.filter(r=>!r.f).length*2;
   const sameW = p.rtf === p.rt;
   const L = [];
-  L.push({id:'posts',qty:4,w:p.b,h:p.b,len:p.H+p.jd+p.embed,note:'Top cut to a stub '+f0(p.b-p.jc)+' × '+f0(p.jd)+' with a shoulder for the cross beam. Brace marks on the two inside faces.'+(p.embed>0?' Includes '+f0(p.embed)+' '+UL()+' below ground.':'')});
+  L.push({id:'posts',qty:4,w:p.b,h:p.b,len:p.H+p.jd+p.embed,note:'Top cut to a stub '+f0(p.b-p.jc)+' wide × '+f0(p.jd)+' tall, with a shoulder for the cross beam. Brace marks on the two inside faces.'+(p.embed>0?' Includes '+f0(p.embed)+' '+UL()+' below ground.':'')});
   L.push({id:'plates',qty:2,w:p.b,h:p.bh,len:g.Lt,note:'Full length. U-cut underneath over each post, '+f0(p.b)+' long and '+f0(p.jd)+' deep, '+f0(p.Og)+' from each end.'});
   L.push({id:'ties',qty:2,w:p.b,h:p.bh,len:p.W+2*p.jc,note:'Between the eaves beams. A tongue '+f0(p.jc)+' long and '+f0(p.jd)+' tall at each end goes into the post.'});
   if (g.kp > 0) L.push({id:'king',qty:2,w:p.b,h:p.b,len:g.kp,note:'Shoulder to shoulder. Add tenons if you joint it into the beams.'});
@@ -944,6 +945,38 @@ function braceSVG(g,p,W){
   return svg(W, yb+32, h, 'Brace with measurements');
 }
 
+function jointSVG(g,p,W){
+  const b = p.b, bh = p.bh, j = p.jd, c = p.jc, H = p.H, x0 = p.W/2, gap = Math.max(40, bh*0.4), tail = Math.max(260, b*2.2);
+  const xmin = x0 - tail - gap - 30, xmax = x0 + b + 150, ymin = H - Math.max(220, bh*1.6), ymax = H + bh + gap + 30;
+  const s = (W - 2*PAD)/(xmax - xmin), X = x => PAD + (x - xmin)*s, Y = y => 26 + (ymax - y)*s;
+  const P = pts => '<polygon class="wood" points="'+poly(pts.map(([x,y]) => [X(x), Y(y)]))+'"/>';
+  let h = '';
+  // post: stub on the outer side, shoulder on the inner side
+  h += P([[x0, ymin], [x0+b, ymin], [x0+b, H+j], [x0+c, H+j], [x0+c, H], [x0, H]]);
+  // cross beam end, pulled to the left: full height, with a tongue at the bottom
+  const L = x0 - gap;
+  h += P([[L - tail, H], [L + c, H], [L + c, H+j], [L, H+j], [L, H+bh], [L - tail, H+bh]]);
+  // eaves beam cut through at the post, lifted: only the wood above the U-cut is left here
+  const U = gap;
+  h += P([[x0, H+j+U], [x0+b, H+j+U], [x0+b, H+bh+U], [x0, H+bh+U]]);
+  h += '<polygon class="ghost" points="'+poly([[x0, H+U], [x0+b, H+U], [x0+b, H+j+U], [x0, H+j+U]].map(([x,y]) => [X(x), Y(y)]))+'"/>';
+  const T = (x, y, t, cls, anchor) => '<text'+(cls ? ' class="'+cls+'"' : '')+' x="'+X(x).toFixed(1)+'" y="'+Y(y).toFixed(1)+'"'+(anchor ? ' text-anchor="'+anchor+'"' : '')+'>'+t+'</text>';
+  h += T(x0 + b/2, H + bh + U + 14/s, 'eaves beam', 'n', 'middle');
+  h += T(x0 + b/2, H + j/2 + U - 4/s, 'U-cut '+f0(j)+' deep', 'c', 'middle');
+  h += T(x0 + c + (b-c)/2, H + j/2 - 4/s, 'stub', 'c', 'middle');
+  h += T(x0 + c/2, H - 16/s, 'shoulder', 'm', 'middle');
+  h += T(L - tail + 8/s, H + bh/2 - 4/s, 'cross beam', 'n');
+  h += T(L + c/2, H + j + 14/s, 'tongue', 'c', 'middle');
+  h += T(x0 + b/2, ymin + 14/s, 'post', 'n', 'middle');
+  // sizes
+  h += hdim(X(L), X(L + c), Y(H) + 18, f0(c), 'c');
+  h += hdim(X(x0 + c), X(x0 + b), Y(H + j) - 10, f0(b - c), 'c');
+  const vx = X(x0 + b) + 22;
+  h += '<line class="dim" x1="'+vx+'" y1="'+Y(H)+'" x2="'+vx+'" y2="'+Y(H+j)+'"/><line class="dim" x1="'+(vx-5)+'" y1="'+Y(H)+'" x2="'+(vx+5)+'" y2="'+Y(H)+'"/><line class="dim" x1="'+(vx-5)+'" y1="'+Y(H+j)+'" x2="'+(vx+5)+'" y2="'+Y(H+j)+'"/>';
+  h += '<text class="c" x="'+(vx+8)+'" y="'+((Y(H)+Y(H+j))/2+4).toFixed(1)+'">'+f0(j)+'</text>';
+  h += '<text class="m" x="'+PAD+'" y="'+(Y(ymin) + 22).toFixed(1)+'">Section through a post, from the gable end. Pieces pulled apart to show the cuts.</text>';
+  return svg(W, Y(ymin) + 30, h, 'Post-top joint close-up');
+}
 function triangleSVG(g,p,W){
   const t = triangleFacts(g,p), xo = g.xo, top = g.zT(0), base = g.zT(xo), runX = g.runX, low = p.H - 260;
   const s = (W - PAD - 92)/runX;
@@ -1009,7 +1042,8 @@ function pieceView(id, g, p, W){
       const L = p.H + p.jd + p.embed;
       const marks = (p.braceT || p.braceL) && g.bk > 0 ? [{x:p.jd + p.bDrop}] : [];
       return {draw:[[beamSVG({len:L, depth:p.b, top:[{x:0, w:p.jd, d:p.jc}], marksTop:marks, marksBot:[{x:p.jd}], hatch:p.embed>0?p.H+p.jd:null, endL:'top', endR:'bottom', label:'Post'}, W),
-          'Post on its side, top on the left, inner face up. Top: brace mark. Bottom: the shoulder.'+(p.embed>0?' Shaded part goes below ground.':'')]],
+          'Post on its side, top on the left, inner face up. Top: brace mark. Bottom: the shoulder.'+(p.embed>0?' Shaded part goes below ground.':'')],
+          [jointSVG(g,p,W), 'How the post top, cross beam tongue and eaves beam U-cut fit together.']],
         steps:['Cut to '+B(f0(L))+' '+UL()+', square at both ends.',
           'At the top, on the inner face (the side facing across the roof), cut away a block '+B(f0(p.jc))+' deep and '+B(f0(p.jd))+' long. That leaves a stub '+B(f0(p.b - p.jc))+' × '+B(f0(p.b))+' on the outer side and a flat shoulder '+B(f0(p.jd))+' below the top.',
           'The stub goes up into the U-cut under the eaves beam. The cross beam tongue sits on the shoulder beside it.',
@@ -1020,7 +1054,8 @@ function pieceView(id, g, p, W){
       const notches = [{x:p.Og,w:p.b,d:p.jd},{x:g.Lt-p.Og-p.b,w:p.b,d:p.jd}];
       const bm = p.braceL && g.bk > 0 ? [{x:p.Og+p.b+g.bc},{x:g.Lt-p.Og-p.b-g.bc}] : [];
       return {draw:[[beamSVG({len:g.Lt, depth:p.bh, bot:notches, marksTop:rafterX.map(x=>({x})), marksBot:[{x:p.Og},{x:g.Lt-p.Og-p.b}].concat(bm), label:'Eaves beam'}, W),
-          'Top: rafter centres from the left end. Bottom: U-cut starts'+(bm.length?' and brace long points':'')+'.']],
+          'Top: rafter centres from the left end. Bottom: U-cut starts'+(bm.length?' and brace long points':'')+'.'],
+          [jointSVG(g,p,W), 'The U-cut drops over the post stub and the cross beam tongue.']],
         steps:['Cut to '+B(f0(g.Lt))+' '+UL()+'.',
           'From each end measure '+B(f0(p.Og))+' '+UL()+'. Cut a U-shaped housing underneath, '+B(f0(p.b))+' long and '+B(f0(p.jd))+' deep, right through the width. It drops over the post stub and the cross beam tongue.',
           'Mark the rafter centres along the top: '+rafterX.map(x=>B(f0(x))).join(', ')+' '+UL()+' from the left end.',
@@ -1031,7 +1066,8 @@ function pieceView(id, g, p, W){
       const notches = [{x:0,w:p.jc,d:p.bh-p.jd},{x:len-p.jc,w:p.jc,d:p.bh-p.jd}];
       const bm = p.braceT && g.bk > 0 ? [{x:p.jc+g.bc},{x:len-p.jc-g.bc}] : [];
       return {draw:[[beamSVG({len, depth:p.bh, top:notches, marksTop:[{x:len/2}], marksBot:bm, label:'Cross beam'}, W),
-          'Top: centre of the ridge post. Bottom: brace long points.']],
+          'Top: centre of the ridge post. Bottom: brace long points.'],
+          [jointSVG(g,p,W), 'The tongue sits on the post shoulder, under the eaves beam.']],
         steps:['Cut to '+B(f0(len))+' '+UL()+'.',
           'At each end cut away the top '+B(f0(p.bh - p.jd))+' over a length of '+B(f0(p.jc))+'. That leaves a tongue '+B(f0(p.jc))+' long and '+B(f0(p.jd))+' tall. The tongue sits on the post shoulder; the full-height part fits between the eaves beams.',
           'Mark the centre at '+B(f0(len/2))+' '+UL()+' for the ridge post.',
@@ -1629,7 +1665,7 @@ function downloadStl(){
 // drawings carry class names only, so the PDF gets its own fixed light colours
 const PRINT_CSS = '<style>.wood{fill:#e3ebfb;stroke:#1c2320;stroke-width:1.4}.ground{fill:#d5dad4}.dim{stroke:#59635e;stroke-width:1}'+
   '.mark{stroke:#1d5bd0;stroke-width:1.4;stroke-dasharray:4 3}text{fill:#1c2320;font-family:"Courier New",Courier,monospace;font-size:12px}'+
-  'text.c{fill:#1d5bd0}text.m{fill:#59635e}.raf{fill:#1d5bd0;fill-opacity:.55;stroke:#1d5bd0}.raf.over{fill-opacity:.9}.tri{fill:#f8e9d6;fill-opacity:.55;stroke:#1d5bd0;stroke-width:2}text.n{font-family:Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;letter-spacing:.06em}.ang{fill:none;stroke:#b05a00;stroke-width:1.4}text.angt{fill:#b05a00;font-weight:700}</style>';
+  'text.c{fill:#1d5bd0}text.m{fill:#59635e}.raf{fill:#1d5bd0;fill-opacity:.55;stroke:#1d5bd0}.ghost{fill:none;stroke:#59635e;stroke-dasharray:4 3}.raf.over{fill-opacity:.9}.tri{fill:#f8e9d6;fill-opacity:.55;stroke:#1d5bd0;stroke-width:2}text.n{font-family:Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;letter-spacing:.06em}.ang{fill:none;stroke:#b05a00;stroke-width:1.4}text.angt{fill:#b05a00;font-weight:700}</style>';
 function svgToPng(str, k){
   return new Promise((res, rej) => {
     const m = str.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/), w = +m[1], h = +m[2];
