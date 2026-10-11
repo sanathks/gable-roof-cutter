@@ -713,7 +713,7 @@ function relieve(pts, r){
 function printKit(g,p,scale,bedW,reliefMm){
   const k = 1/scale, gap = 3, pr = printProfiles(g,p), L = [];
   const add = (name,n,t,pts) => { if (n > 0) L.push({name,n,t,pts}); };
-  add('post',4,p.b,postProfile(p, true));
+  add('post',4,p.b,postProfile(p, true).map(([x,y]) => [y,x]));   // lie the post down along the bed
   add('eaves beam',2,p.b,pr.plate);
   add('cross beam',2,p.b,pr.tie);
   if (g.kp > 0) add('ridge post',2,p.b,rectP(0,0,g.kp,p.b));
