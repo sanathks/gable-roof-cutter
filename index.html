@@ -68,6 +68,8 @@ button.primary{background:var(--chalk);border-color:var(--chalk);color:var(--pan
 .view-tools{position:absolute;top:10px;left:10px;right:10px;display:flex;flex-wrap:wrap;gap:6px;pointer-events:none}
 .view-tools button{background:var(--panel);font-size:13px;padding:5px 11px;pointer-events:auto}
 .view-tools .max-btn{margin-left:auto}
+.view-tools .explode{order:5;flex-basis:100%;display:flex;align-items:center;gap:10px;pointer-events:auto;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:4px 12px;font-size:13px;font-weight:500;max-width:340px}
+.view-tools .explode input{flex:1;min-width:0;accent-color:var(--chalk)}
 .view-tools button.primary{background:var(--chalk);border-color:var(--chalk);color:var(--panel)}
 .showrow{order:3;flex-basis:100%;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;pointer-events:auto;padding-bottom:2px}
 .showrow::-webkit-scrollbar{display:none}
@@ -279,6 +281,7 @@ tfoot td{font-weight:600;border-bottom:0}
         <button type="button" id="tView">Reset view</button>
         <button type="button" id="tFocus" class="primary" hidden>Show all</button>
         <button type="button" id="tMax" class="max-btn" aria-pressed="false">Full screen</button>
+        <label class="explode" for="tExplode"><span>Pull apart</span><input type="range" id="tExplode" min="0" max="100" step="1" value="0" aria-label="Pull the pieces apart"></label>
       </div>
       <div class="pick" id="pick"></div>
       <aside class="blueprint" id="blueprint" aria-label="Blueprint of the selected piece">
@@ -1470,7 +1473,40 @@ function build3d(g,p){
   visibility();
   highlight();
   applyFocus();
+  applyExplode();
   if (firstFrame) { fitView(g,p); firstFrame = false; }
+}
+// pull the pieces apart so every joint opens up; at 0 everything sits exactly where it is cut to go
+let explodeAmt = 0;
+function explodeOffset(part, sx, sz, D){
+  switch (part) {
+    case 'posts': return [0, -0.35*D, 0];
+    case 'plates': return [sx*0.7*D, 0.55*D, 0];
+    case 'ties': return [0, 0.2*D, 0];
+    case 'king': return [0, 0.9*D, 0];
+    case 'ridge': return [0, 1.35*D, 0];
+    case 'rafC': case 'rafF': return [sx*0.55*D, 1.9*D, 0];
+    case 'braceT': return [-sx*0.35*D, -0.2*D, 0];
+    case 'braceL': return [0, -0.2*D, -sz*0.35*D];
+  }
+  return [0, 0, 0];
+}
+function applyExplode(){
+  if (!model || !G) return;
+  const D = explodeAmt/100 * Math.max(G.Lt, 2*G.runX) * 0.16 * S;
+  model.children.forEach(o => {
+    const ud = o.userData;
+    if (!ud.base) {
+      ud.base = o.position.clone();
+      o.geometry.computeBoundingBox();
+      o.updateMatrixWorld(true);
+      const c = o.localToWorld(o.geometry.boundingBox.getCenter(new THREE.Vector3()));
+      ud.sx = Math.sign(Math.round(c.x*1000)) || 0; ud.sz = Math.sign(Math.round(c.z*1000)) || 0;
+    }
+    const [dx, dy, dz] = explodeOffset(ud.part, ud.sx, ud.sz, D);
+    o.position.set(ud.base.x + dx, ud.base.y + dy, ud.base.z + dz);
+  });
+  if (explodeAmt > 0) clearDim();
 }
 function fitView(g,p){
   if (!controls) return;
@@ -1741,7 +1777,7 @@ function snapshot(kind){
   const vis = model.children.map(o => o.visible);
   model.children.forEach(o => o.visible = true);
   if (dimObj) dimObj.visible = false;
-  const was = selected, fk = focusKey, fg = [...focusGroups]; selected = null; focusKey = null; focusGroups.clear(); applyFocus(); highlight();
+  const was = selected, fk = focusKey, fg = [...focusGroups], ex = explodeAmt; selected = null; focusKey = null; focusGroups.clear(); explodeAmt = 0; applyExplode(); applyFocus(); highlight();
   renderer.setPixelRatio(1); renderer.setSize(W, H, false);
   scene.background = new THREE.Color(0xffffff); grid.visible = kind === 'persp';
   camera.aspect = W/H;
@@ -1763,7 +1799,7 @@ function snapshot(kind){
   renderer.setPixelRatio(pr);
   model.children.forEach((o,i) => o.visible = vis[i]);
   if (dimObj) dimObj.visible = true;
-  selected = was; focusKey = fk; fg.forEach(x => focusGroups.add(x)); highlight(); applyFocus(); size(); controls.update();
+  selected = was; focusKey = fk; fg.forEach(x => focusGroups.add(x)); explodeAmt = ex; applyExplode(); highlight(); applyFocus(); size(); controls.update();
   return url;
 }
 async function makePdf(check){
@@ -1953,6 +1989,7 @@ window.addEventListener('resize', () => renderBlue());
 $('tMax').addEventListener('click', () => setMax(!$('viewer').classList.contains('max')));
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('viewer').classList.contains('max')) setMax(false); });
 $('tFocus').addEventListener('click', exitFocus);
+$('tExplode').addEventListener('input', e => { explodeAmt = +e.target.value; applyExplode(); });
 $('tView').addEventListener('click', () => { if (G) fitView(G, PP); });
 try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { applyTheme(); highlight(); }); } catch (e) {}
 new MutationObserver(() => { applyTheme(); highlight(); }).observe(document.documentElement, {attributes:true, attributeFilter:['data-theme']});
