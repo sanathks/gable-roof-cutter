@@ -2038,7 +2038,8 @@ async function makeGif(check, jointId){
       const data = cx.getImageData(0, 0, W, H).data;
       const palette = quantize(data, 256), index = applyPalette(data, palette);
       gif.writeFrame(index, W, H, {palette, delay: 60});
-      await new Promise(r => setTimeout(r, 0));     // keep the page responsive while recording
+      // let the page breathe between frames; a message channel is not slowed down when the tab is in the background
+      await new Promise(r => { const ch = new MessageChannel(); ch.port1.onmessage = () => r(); ch.port2.postMessage(0); });
     }
     gif.finish();
   } finally {
