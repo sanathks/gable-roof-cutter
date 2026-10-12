@@ -71,6 +71,8 @@ button.primary{background:var(--chalk);border-color:var(--chalk);color:var(--pan
 .view-tools .explode{order:5;flex-basis:100%;display:flex;align-items:center;gap:10px;pointer-events:auto;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:4px 12px;font-size:13px;font-weight:500;max-width:340px}
 .view-tools .explode input{flex:1;min-width:0;accent-color:var(--chalk)}
 .view-tools .explode button{padding:3px 10px;font-size:12px;flex:none}
+.view-tools .explode{flex-wrap:wrap;max-width:460px}
+.view-tools .explode select{font:500 12px var(--f-body);color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:3px 6px;flex:none}
 .view-tools button.primary{background:var(--chalk);border-color:var(--chalk);color:var(--panel)}
 .showrow{order:3;flex-basis:100%;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;pointer-events:auto;padding-bottom:2px}
 .showrow::-webkit-scrollbar{display:none}
@@ -282,7 +284,7 @@ tfoot td{font-weight:600;border-bottom:0}
         <button type="button" id="tView">Reset view</button>
         <button type="button" id="tFocus" class="primary" hidden>Show all</button>
         <button type="button" id="tMax" class="max-btn" aria-pressed="false">Full screen</button>
-        <label class="explode" for="tExplode"><span>Pull apart</span><input type="range" id="tExplode" min="0" max="100" step="1" value="0" aria-label="Pull the pieces apart"><button type="button" id="tGif">Save GIF</button></label>
+        <label class="explode" for="tExplode"><span>Pull apart</span><input type="range" id="tExplode" min="0" max="100" step="1" value="0" aria-label="Pull the pieces apart"><select id="tGifJoint" aria-label="Joint to record"><option value="all">Whole roof</option><option value="post">Post top</option><option value="birdsmouth">Birdsmouth</option><option value="ridgenotch">Ridge notch</option><option value="kingpost">Ridge post</option><option value="brace">Brace</option></select><button type="button" id="tGif">Save GIF</button></label>
       </div>
       <div class="pick" id="pick"></div>
       <aside class="blueprint" id="blueprint" aria-label="Blueprint of the selected piece">
@@ -1992,10 +1994,31 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('viewer'
 $('tFocus').addEventListener('click', exitFocus);
 $('tExplode').addEventListener('input', e => { explodeAmt = +e.target.value; applyExplode(); });
 // GIF of the joints coming apart and going back together, from the current view
-async function makeGif(check){
+// each joint: where to look (mm), which pieces take part, the view direction and how far to pull apart
+function gifJoint(id){
+  const p = PP, g = G, fz = g.frameZ, H = p.H, c = g.raf.filter(r => !r.f), rz = (c.length ? c[c.length-1] : g.raf[g.raf.length-1]).z;
+  switch (id) {
+    case 'post': return {at:[p.W/2 + p.b/2, H + p.bh/2, fz], groups:['posts','plates','ties'], dir:[0.85,0.7,1], dist:1300, max:55};
+    case 'birdsmouth': return {at:[g.xo, g.z0 + 80, rz], groups:['rafters','plates'], dir:[0.25,0.35,1], dist:1500, max:45};
+    case 'ridgenotch': return {at:[0, g.zR + 80, rz], groups:['rafters','ridge'], dir:[0.3,0.35,1], dist:1400, max:40};
+    case 'kingpost': return {at:[0, g.z0 + g.kp/2 + 100, fz], groups:['ties','king','ridge'], dir:[0.5,0.35,1], dist:1900, max:55};
+    case 'brace': return {at:[p.W/2 - g.bc/2, H - p.bDrop/2, fz], groups:['braces','posts','ties'], dir:[0.2,0.25,1], dist:1500, max:60};
+  }
+  return null;
+}
+async function makeGif(check, jointId){
   if (!renderer || !G) throw new Error('3D view is not ready');
+  const joint = gifJoint(jointId || $('tGifJoint').value);
   const { GIFEncoder, quantize, applyPalette } = await import('https://cdn.jsdelivr.net/npm/gifenc@1.0.3/+esm');
   const W = 560, H = 360, pr = renderer.getPixelRatio(), keepAspect = camera.aspect, keepEx = explodeAmt;
+  const keep = {pos:camera.position.clone(), tgt:controls.target.clone(), fk:focusKey, fg:[...focusGroups], hid:[...hiddenGroups], sel:selected};
+  const top = joint ? joint.max : 100;
+  if (joint) {
+    const t = new THREE.Vector3(...joint.at).multiplyScalar(S), d = new THREE.Vector3(...joint.dir).normalize();
+    controls.target.copy(t); camera.position.copy(t).add(d.multiplyScalar(joint.dist*S)); camera.lookAt(t);
+    selected = null; focusKey = null; focusGroups.clear(); joint.groups.forEach(x => focusGroups.add(x)); hiddenGroups.clear();
+    visibility(); applyFocus(); highlight();
+  }
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const cx = cv.getContext('2d', {willReadFrequently: true});
   renderer.setPixelRatio(1); renderer.setSize(W, H, false); camera.aspect = W/H; camera.updateProjectionMatrix();
@@ -2003,9 +2026,9 @@ async function makeGif(check){
   const ease = t => t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2)/2;
   const steps = 22, frames = [];
   for (let i = 0; i < 6; i++) frames.push(0);
-  for (let i = 1; i <= steps; i++) frames.push(ease(i/steps)*100);
-  for (let i = 0; i < 10; i++) frames.push(100);
-  for (let i = steps - 1; i >= 0; i--) frames.push(ease(i/steps)*100);
+  for (let i = 1; i <= steps; i++) frames.push(ease(i/steps)*top);
+  for (let i = 0; i < 10; i++) frames.push(top);
+  for (let i = steps - 1; i >= 0; i--) frames.push(ease(i/steps)*top);
   const gif = GIFEncoder();
   try {
     for (const a of frames) {
@@ -2020,16 +2043,22 @@ async function makeGif(check){
     gif.finish();
   } finally {
     explodeAmt = keepEx; applyExplode();
+    if (joint) {
+      camera.position.copy(keep.pos); controls.target.copy(keep.tgt);
+      focusKey = keep.fk; focusGroups.clear(); keep.fg.forEach(x => focusGroups.add(x));
+      hiddenGroups.clear(); keep.hid.forEach(x => hiddenGroups.add(x)); selected = keep.sel;
+      buildShowRow(); visibility(); applyFocus(); highlight(); controls.update();
+    }
     renderer.setPixelRatio(pr); camera.aspect = keepAspect; camera.updateProjectionMatrix(); size();
   }
   const bytes = gif.bytes();
   if (check) return {frames: frames.length, bytes: bytes.length, width: W, height: H, url: URL.createObjectURL(new Blob([bytes], {type:'image/gif'}))};
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([bytes], {type:'image/gif'})); a.download = 'gable-roof-joints.gif';
+  a.href = URL.createObjectURL(new Blob([bytes], {type:'image/gif'})); a.download = 'gable-roof-' + ($('tGifJoint').value === 'all' ? 'joints' : $('tGifJoint').value) + '.gif';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
-window.gableRoofGifCheck = () => makeGif(true);
+window.gableRoofGifCheck = j => makeGif(true, j);
 $('tGif').addEventListener('click', async e => {
   e.preventDefault(); const b = e.currentTarget; if (b.disabled) return;
   b.disabled = true; b.textContent = 'Recording…';
