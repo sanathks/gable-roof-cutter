@@ -1998,10 +1998,10 @@ $('tExplode').addEventListener('input', e => { explodeAmt = +e.target.value; app
 function gifJoint(id){
   const p = PP, g = G, fz = g.frameZ, H = p.H, c = g.raf.filter(r => !r.f), rz = (c.length ? c[c.length-1] : g.raf[g.raf.length-1]).z;
   switch (id) {
-    case 'post': return {at:[p.W/2 + p.b/2, H + p.bh/2, fz], groups:['posts','plates','ties'], dir:[0.85,0.7,1], dist:1300, max:55};
-    case 'birdsmouth': return {at:[g.xo, g.z0 + 80, rz], groups:['rafters','plates'], dir:[0.25,0.35,1], dist:1500, max:45};
-    case 'ridgenotch': return {at:[0, g.zR + 80, rz], groups:['rafters','ridge'], dir:[0.3,0.35,1], dist:1400, max:40};
-    case 'kingpost': return {at:[0, g.z0 + g.kp/2 + 100, fz], groups:['ties','king','ridge'], dir:[0.5,0.35,1], dist:1900, max:55};
+    case 'post': return {at:[p.W/2 + p.b/2, H + p.bh, fz], groups:['posts','plates','ties'], dir:[-0.6,0.85,0.9], dist:1400, max:45};
+    case 'birdsmouth': return {at:[g.xo, g.z0 + 160, rz], groups:['rafters','plates'], dir:[0.25,0.35,1], dist:1700, max:28};
+    case 'ridgenotch': return {at:[0, g.zR + 120, rz], groups:['rafters','ridge'], dir:[0.3,0.35,1], dist:1500, max:30};
+    case 'kingpost': return {at:[0, g.z0 + g.kp/2 + 220, fz], groups:['ties','king','ridge'], dir:[0.5,0.35,1], dist:2200, max:35};
     case 'brace': return {at:[p.W/2 - g.bc/2, H - p.bDrop/2, fz], groups:['braces','posts','ties'], dir:[0.2,0.25,1], dist:1500, max:60};
   }
   return null;
