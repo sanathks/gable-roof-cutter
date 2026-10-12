@@ -70,6 +70,7 @@ button.primary{background:var(--chalk);border-color:var(--chalk);color:var(--pan
 .view-tools .max-btn{margin-left:auto}
 .view-tools .explode{order:5;flex-basis:100%;display:flex;align-items:center;gap:10px;pointer-events:auto;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:4px 12px;font-size:13px;font-weight:500;max-width:340px}
 .view-tools .explode input{flex:1;min-width:0;accent-color:var(--chalk)}
+.view-tools .explode button{padding:3px 10px;font-size:12px;flex:none}
 .view-tools button.primary{background:var(--chalk);border-color:var(--chalk);color:var(--panel)}
 .showrow{order:3;flex-basis:100%;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;pointer-events:auto;padding-bottom:2px}
 .showrow::-webkit-scrollbar{display:none}
@@ -281,7 +282,7 @@ tfoot td{font-weight:600;border-bottom:0}
         <button type="button" id="tView">Reset view</button>
         <button type="button" id="tFocus" class="primary" hidden>Show all</button>
         <button type="button" id="tMax" class="max-btn" aria-pressed="false">Full screen</button>
-        <label class="explode" for="tExplode"><span>Pull apart</span><input type="range" id="tExplode" min="0" max="100" step="1" value="0" aria-label="Pull the pieces apart"></label>
+        <label class="explode" for="tExplode"><span>Pull apart</span><input type="range" id="tExplode" min="0" max="100" step="1" value="0" aria-label="Pull the pieces apart"><button type="button" id="tGif">Save GIF</button></label>
       </div>
       <div class="pick" id="pick"></div>
       <aside class="blueprint" id="blueprint" aria-label="Blueprint of the selected piece">
@@ -1990,6 +1991,52 @@ $('tMax').addEventListener('click', () => setMax(!$('viewer').classList.contains
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('viewer').classList.contains('max')) setMax(false); });
 $('tFocus').addEventListener('click', exitFocus);
 $('tExplode').addEventListener('input', e => { explodeAmt = +e.target.value; applyExplode(); });
+// GIF of the joints coming apart and going back together, from the current view
+async function makeGif(check){
+  if (!renderer || !G) throw new Error('3D view is not ready');
+  const { GIFEncoder, quantize, applyPalette } = await import('https://cdn.jsdelivr.net/npm/gifenc@1.0.3/+esm');
+  const W = 560, H = 360, pr = renderer.getPixelRatio(), keepAspect = camera.aspect, keepEx = explodeAmt;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const cx = cv.getContext('2d', {willReadFrequently: true});
+  renderer.setPixelRatio(1); renderer.setSize(W, H, false); camera.aspect = W/H; camera.updateProjectionMatrix();
+  clearDim();
+  const ease = t => t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2)/2;
+  const steps = 22, frames = [];
+  for (let i = 0; i < 6; i++) frames.push(0);
+  for (let i = 1; i <= steps; i++) frames.push(ease(i/steps)*100);
+  for (let i = 0; i < 10; i++) frames.push(100);
+  for (let i = steps - 1; i >= 0; i--) frames.push(ease(i/steps)*100);
+  const gif = GIFEncoder();
+  try {
+    for (const a of frames) {
+      explodeAmt = a; applyExplode();
+      renderer.render(scene, camera);
+      cx.drawImage(renderer.domElement, 0, 0, W, H);
+      const data = cx.getImageData(0, 0, W, H).data;
+      const palette = quantize(data, 256), index = applyPalette(data, palette);
+      gif.writeFrame(index, W, H, {palette, delay: 60});
+      await new Promise(r => setTimeout(r, 0));     // keep the page responsive while recording
+    }
+    gif.finish();
+  } finally {
+    explodeAmt = keepEx; applyExplode();
+    renderer.setPixelRatio(pr); camera.aspect = keepAspect; camera.updateProjectionMatrix(); size();
+  }
+  const bytes = gif.bytes();
+  if (check) return {frames: frames.length, bytes: bytes.length, width: W, height: H};
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([bytes], {type:'image/gif'})); a.download = 'gable-roof-joints.gif';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+window.gableRoofGifCheck = () => makeGif(true);
+$('tGif').addEventListener('click', async e => {
+  e.preventDefault(); const b = e.currentTarget; if (b.disabled) return;
+  b.disabled = true; b.textContent = 'Recording…';
+  try { await makeGif(); b.textContent = 'Save GIF'; }
+  catch (err) { console.error(err); b.textContent = 'GIF failed'; setTimeout(() => b.textContent = 'Save GIF', 2500); }
+  b.disabled = false;
+});
 $('tView').addEventListener('click', () => { if (G) fitView(G, PP); });
 try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { applyTheme(); highlight(); }); } catch (e) {}
 new MutationObserver(() => { applyTheme(); highlight(); }).observe(document.documentElement, {attributes:true, attributeFilter:['data-theme']});
