@@ -1480,14 +1480,14 @@ function build3d(g,p){
 let explodeAmt = 0;
 function explodeOffset(part, sx, sz, D){
   switch (part) {
-    case 'posts': return [0, -0.35*D, 0];
+    case 'posts': return [0, 0, 0];                 // posts stay put; everything else moves off them
     case 'plates': return [sx*0.7*D, 0.55*D, 0];
     case 'ties': return [0, 0.2*D, 0];
     case 'king': return [0, 0.9*D, 0];
     case 'ridge': return [0, 1.35*D, 0];
     case 'rafC': case 'rafF': return [sx*0.55*D, 1.9*D, 0];
-    case 'braceT': return [-sx*0.35*D, -0.2*D, 0];
-    case 'braceL': return [0, -0.2*D, -sz*0.35*D];
+    case 'braceT': return [-sx*0.35*D, 0, 0];
+    case 'braceL': return [0, 0, -sz*0.35*D];
   }
   return [0, 0, 0];
 }
