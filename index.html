@@ -2023,7 +2023,7 @@ async function makeGif(check){
     renderer.setPixelRatio(pr); camera.aspect = keepAspect; camera.updateProjectionMatrix(); size();
   }
   const bytes = gif.bytes();
-  if (check) return {frames: frames.length, bytes: bytes.length, width: W, height: H};
+  if (check) return {frames: frames.length, bytes: bytes.length, width: W, height: H, url: URL.createObjectURL(new Blob([bytes], {type:'image/gif'}))};
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([bytes], {type:'image/gif'})); a.download = 'gable-roof-joints.gif';
   document.body.appendChild(a); a.click(); a.remove();
