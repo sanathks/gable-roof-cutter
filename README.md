@@ -1,7 +1,8 @@
 # Gable Roof Cutter
 
 Calculator for a purlin gable roof on four posts: 3D model, cut list, cut drawings for every piece,
-and STL files for a scale model. Live at https://sanathks.github.io/gable-roof-cutter/
+STL files for a scale model, and real-size rafter marking templates (STL or two-colour 3MF) made
+from the sizes you enter. Live at https://sanathks.github.io/gable-roof-cutter/
 
 ## Tests
 

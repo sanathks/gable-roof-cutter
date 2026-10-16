@@ -6,7 +6,7 @@
 <title>Gable Roof Cutter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
 body{margin:0}[hidden]{display:none!important}*,*::before,*::after{box-sizing:border-box}
 /* Layout: a workbench. Sizes rail on the left, model, cut drawing and cut list on the right.
@@ -216,6 +216,8 @@ tfoot td{font-weight:600;border-bottom:0}
 .printrow button{min-height:36px}
 .pinfo{font-size:13px;color:var(--ink);max-width:80ch}
 .pinfo b{font-family:var(--f-mono);font-weight:500;color:var(--chalk)}
+.tprev{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0 4px}
+.tprev canvas{max-width:100%;height:auto;flex:0 1 auto;max-height:220px;border-radius:4px}
 
 @media (max-width:900px){
   .piece-body{grid-template-columns:minmax(0,1fr)}
@@ -348,6 +350,20 @@ tfoot td{font-weight:600;border-bottom:0}
         <button type="button" class="primary" id="pGo">Download STL</button>
       </div>
       <p class="pinfo" id="pInfo"></p>
+    </section>
+
+    <section class="card" id="tplCard">
+      <div class="card-head"><h2>Marking templates</h2><p>Real-size rafter templates to 3D print: trace the ridge cut, ridge notch and birdsmouth straight onto the timber.</p></div>
+      <div class="printrow">
+        <label for="tWhich">Template
+          <select id="tWhich"><option value="both" selected>Ridge end and birdsmouth</option><option value="ridge">Ridge end</option><option value="bird">Birdsmouth</option></select></label>
+        <label for="tFmt">File
+          <select id="tFmt"><option value="stl" selected>STL, letters engraved (one colour)</option><option value="3mf">3MF, black letters (two colours)</option></select></label>
+        <button type="button" class="primary" id="tGo">Download templates</button>
+      </div>
+      <div class="tprev" id="tPrev"></div>
+      <p class="pinfo" id="tInfo"></p>
+      <p class="foot">Print flat with the lettered side on the bed, no supports. That face goes towards you, the lip hooks over the rafter's top edge. Engraved letters: fill them with a marker. Two colours need a printer that can change colour within a layer.</p>
     </section>
 
     <section class="card">
@@ -1046,6 +1062,177 @@ function triangleSVG(g,p,W){
   h += '<text class="m" x="'+(X(0)-4).toFixed(1)+'" y="'+(Y(top)-18).toFixed(1)+'" text-anchor="end">ridge</text>';
   h += '<text class="m" x="'+X(xo).toFixed(1)+'" y="'+(Y(low)+16).toFixed(1)+'">post</text>';
   return svg(W, Y(low) + 24, h, 'Roof triangle: run, rise and rafter line');
+}
+/* ---------- rafter marking templates: real size, printed flat, letters set into the bed face ---------- */
+// Seen on the rafter (bed face towards you) the ridge end is on the right. The model is the mirror of that view:
+// x runs along the rafter top edge from the template's ridge-side end, y = 0 at the bottom edge, y = D at the top edge.
+const TPL = {PLATE:3, LIP:4, HOOK:16, INK:1, VD:5, END:30};
+function clipX(poly, a, b){
+  const cut = (pts, inside, at) => { const o = [];
+    pts.forEach((q, i) => { const r = pts[(i+1) % pts.length], qi = inside(q), ri = inside(r);
+      if (qi) o.push(q);
+      if (qi !== ri) { const t = (at - q[0]) / (r[0] - q[0]); o.push([at, q[1] + t*(r[1] - q[1])]); } });
+    return o; };
+  return cut(cut(poly, q => q[0] >= a - 1e-9, a), q => q[0] <= b + 1e-9, b);
+}
+// Both templates: outline (model coords), lip spans, the V notch, and the marks in template coords
+// (f.*: x from the ridge-side end, v = 0 on the top edge, negative into the wood) that the labels are drawn from.
+function templates(g, p){
+  const s = Math.sin(g.a), c = Math.cos(g.a), t = s/c, t0 = g.prof[0], D = p.rd, E = TPL.END;
+  const lev = g.prof.map(([x,y]) => { const dx = x - t0[0], dy = y - t0[1]; return [dx*c - dy*s, dx*s + dy*c]; });
+  const down = (q, l) => [q[0] + s*l, q[1] - c*l], toRidge = (q, l) => [q[0] - c*l, q[1] - s*l];
+  const make = (key, u0, u1, f) => {
+    const sh = q => [q[0] - u0, q[1]];
+    Object.keys(f).forEach(k => f[k] = sh(f[k]));
+    let pts = clipX(lev, u0, u1).map(([u,v]) => [u - u0, v + D]);
+    const W = u1 - u0, tp = {key, W, D, pts, f, spans:[[0, W]], notch:null};
+    return tp;
+  };
+  const out = {};
+  // ridge end: the ridge cut, and the ridge notch when there is one
+  const rf = {long:[0,0], cutBot:down([0,0], D/c)};
+  let ru1 = rf.cutBot[0] + 40;
+  if (p.hr > 0) {
+    rf.top = [g.rHeel, 0]; rf.corner = down(rf.top, g.rHap); rf.heelEnd = down(rf.corner, p.hr); rf.seatEnd = toRidge(rf.corner, g.rSeat);
+    ru1 = Math.max(rf.heelEnd[0], rf.top[0]) + E;
+  }
+  out.ridge = make('ridge', 0, ru1, rf);
+  // birdsmouth, with a V notch in the top edge: its point on the plumb line, one corner of its mouth on the mark
+  const bf = {top:[g.heel, 0]}; bf.corner = down(bf.top, g.hap); bf.heelEnd = down(bf.corner, p.hb); bf.seatEnd = toRidge(bf.corner, g.seat);
+  const bu0 = Math.min(bf.seatEnd[0], bf.top[0]) - E, bu1 = Math.max(bf.heelEnd[0], bf.top[0]) + E;
+  const B = out.bird = make('bird', bu0, bu1, bf);
+  const mark = B.f.top[0], apex = mark + t*TPL.VD, m0 = mark, m1 = mark + 2*t*TPL.VD;
+  const i = B.pts.findIndex((q, k) => { const r = B.pts[(k+1) % B.pts.length]; return Math.abs(q[1] - D) < 1e-6 && Math.abs(r[1] - D) < 1e-6; });
+  const dir = Math.sign(B.pts[(i+1) % B.pts.length][0] - B.pts[i][0]);
+  const ends = dir > 0 ? [m0, m1] : [m1, m0];
+  B.pts = B.pts.slice(0, i+1).concat([[ends[0], D], [apex, D - TPL.VD], [ends[1], D]], B.pts.slice(i+1));
+  B.notch = {mark, apex:[apex, D - TPL.VD], mouth:[m0, m1]};
+  B.spans = [[0, m0], [m1, B.W]];
+  return out;
+}
+// The marks and words, drawn with tools {line, dashed, text, arc} in template coords (x, v). Sizes in mm.
+// Words sit in the open areas between the cut lines, worked out from the marks so they move with the sizes.
+function templateLabels(tp, g, p, T0){
+  const f = tp.f, D = tp.D, W = tp.W, t = g.tn, LINE = 1.5;
+  // every mark is kept as an obstacle; each word goes where it was asked if it fits on the plate clear of them,
+  // otherwise to the nearest spot that does (searched in rings round the asked spot)
+  const segs = [], boxes = [], pts = tp.pts.map(q => [q[0], q[1] - D]);
+  const inPlate = (x, v) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j];
+    if ((yi > v) !== (yj > v) && x < (xj - xi)*(v - yi)/(yj - yi) + xi) c = !c; } return c; };
+  const segBox = ([a, b], [x0, v0, x1, v1]) => { for (let k = 0; k <= 24; k++) { const x = a[0] + (b[0] - a[0])*k/24, v = a[1] + (b[1] - a[1])*k/24; if (x > x0 && x < x1 && v > v0 && v < v1) return true; } return false; };
+  const measure = T0.measure || ((s, size) => s.length*size*0.54);
+  const fits = (bx) => { const [x0, v0, x1, v1] = bx, m = 1.5;
+    for (let i = 0; i <= 4; i++) for (const v of [v0 - m, v1 + m]) if (!inPlate(x0 - m + (x1 - x0 + 2*m)*i/4, v)) return false;
+    for (const x of [x0 - m, x1 + m]) if (!inPlate(x, (v0 + v1)/2)) return false;
+    const grow = [x0 - 1.5, v0 - 1.5, x1 + 1.5, v1 + 1.5];
+    return !segs.some(sg => segBox(sg, grow)) && !boxes.some(b => b[0] < grow[2] && b[2] > grow[0] && b[1] < grow[3] && b[3] > grow[1]); };
+  const T = {
+    line: (a, b, w) => { segs.push([a, b]); T0.line(a, b, w); },
+    dashed: (a, b, w) => { segs.push([a, b]); T0.dashed(a, b, w); },
+    arc: (V, a1, a2, r, label, lr, at) => {
+      let d = a2 - a1; while (d > Math.PI) d -= 2*Math.PI; while (d <= -Math.PI) d += 2*Math.PI;
+      for (let k = 0; k < 8; k++) { const q = a => [V[0] + r*Math.cos(a), V[1] + r*Math.sin(a)]; segs.push([q(a1 + d*k/8), q(a1 + d*(k + 1)/8)]); }
+      const m = a1 + d/2, R = r + (lr || 6), c = at ? [V[0] + at[0], V[1] + at[1]] : [V[0] + R*Math.cos(m), V[1] + R*Math.sin(m)], hw = measure(label, 6.3)/2;
+      boxes.push([c[0] - hw, c[1] - 2.3, c[0] + hw, c[1] + 2.3]);
+      T0.arc(V, a1, a2, r, label, lr, at); },
+    text: (s, x, v, size) => {
+      const hw = measure(s, size)/2, hh = size*0.36, bx = (cx, cv) => [cx - hw, cv - hh, cx + hw, cv + hh];
+      let best = [x, v];
+      if (!fits(bx(x, v))) { best = null;
+        for (let r = 1.5; r <= 60 && !best; r += 1.5) for (let k = 0; k < 24 && !best; k++) { const a = k*Math.PI/12, cx = x + r*Math.cos(a), cv = v + r*Math.sin(a); if (fits(bx(cx, cv))) best = [cx, cv]; }
+        if (!best) best = [x, v]; }
+      boxes.push(bx(...best)); T0.text(s, best[0], best[1], size); },
+  };
+  const A = d => (Math.abs(d - Math.round(d)) < 0.05 ? Math.round(d) : Math.round(d*10)/10) + '°';
+  const pitch = A(p.pitch), plumb = A(90 - p.pitch), mm = n => String(Math.round(n));
+  const ang = (V, Q) => Math.atan2(Q[1] - V[1], Q[0] - V[0]), dist = (P, Q) => Math.hypot(P[0] - Q[0], P[1] - Q[1]);
+  const along = (P, Q, v) => P[0] + (v - P[1]) * (Q[0] - P[0]) / (Q[1] - P[1]);   // x of line PQ at depth v
+  const notch = () => {
+    const C = f.corner;
+    T.line(f.top, C, LINE);
+    T.arc(f.top, 0, ang(f.top, C), 20, plumb, 9);
+    T.arc(C, ang(C, f.top), ang(C, f.seatEnd), 13, '90°', 6, [-22, 7]);
+    T.dashed([C[0] - 32, C[1]], C, 1.0); T.dashed(C, [C[0] + 32, C[1]], 1.0);
+    T.arc(C, Math.PI, ang(C, f.seatEnd), 26, pitch, 12);
+    T.arc(C, 0, ang(C, f.heelEnd), 20, plumb, 8);
+  };
+  if (tp.key === 'ridge') {
+    const cut = v => along(f.long, f.cutBot, v);
+    T.arc(f.long, 0, ang(f.long, f.cutBot), 22, plumb, 8);
+    if (f.corner) {
+      const C = f.corner, pl = v => along(f.top, C, v);
+      T.line([5, -4], [f.top[0] - 1.5, -4], 1.2); T.line([f.top[0] - 0.8, -1.8], [f.top[0] - 0.8, -6.5], 1.2);
+      T.text(mm(g.rHeel), f.top[0]*0.62, -11, 6.9);
+      notch();
+      T.text(mm(g.rHap) + ' DOWN', (f.top[0] + C[0])/2 + 23, C[1]/2 + 1, 6.9);
+      const vc = -0.52*D; T.text('RIDGE CUT', (cut(vc) + pl(vc))/2, vc, 5.8);
+      const vs = C[1] - 0.58*(D + C[1]);
+      T.text('SEAT ' + mm(dist(C, f.seatEnd)), (cut(vs) + along(C, f.seatEnd, vs))/2, vs, 5.3);
+      T.text('HEEL ' + mm(p.hr), (along(C, f.heelEnd, vs) + W)/2, vs, 6.3);
+      const xr = (pl(-0.45*D) + W)/2;
+      T.text('RIDGE END', xr, -0.167*D, 6.3); T.text(pitch + ' ROOF', xr, -0.258*D, 6.3); T.text('RIDGE NOTCH', xr, -0.458*D, 6.9);
+    } else {
+      const xr = v => (cut(v) + W)/2;
+      T.text('RIDGE END', xr(-0.2*D), -0.2*D, 6.3); T.text(pitch + ' ROOF', xr(-0.31*D), -0.31*D, 6.3);
+      T.text('RIDGE CUT', xr(-0.55*D), -0.55*D, 5.8);
+    }
+  } else {
+    const C = f.corner, pl = v => along(f.top, C, v);
+    notch();
+    T.text(mm(g.hap) + ' DOWN', f.top[0] + 0.66*(C[0] - f.top[0]) + 23, 0.66*C[1], 6.9);
+    const xr = (pl(-0.225*D) + W)/2;
+    T.text('BIRDSMOUTH', xr, -0.133*D, 6.3); T.text(pitch + ' ROOF', xr, -0.225*D, 6.3);
+    T.text('LIP GAP = ' + mm(g.heel) + ' MARK', xr, -0.317*D, 5.5);
+    const vs = C[1] - 0.457*(D + C[1]), vh = C[1] - 0.565*(D + C[1]);
+    T.text('SEAT ' + mm(g.seat), along(C, f.seatEnd, vs)/2, vs, 5.3);
+    T.text('HEEL ' + mm(p.hb), (along(C, f.heelEnd, vh) + W)/2, vh, 6.3);
+  }
+}
+// White body and black letters. mask (optional): {w, h, K, ink} with one byte per pixel, seen from the bed face:
+// column px is u' = (px + 0.5)/K from the left as seen (model x = W - u'), row r is v = -(r + 0.5)/K.
+// Without a mask the body is solid (no letters), which is what the tests check.
+function templateSolids(tp, mask){
+  const {PLATE, LIP, HOOK, INK, VD} = TPL, W = tp.W, D = tp.D, white = [], black = [];
+  const box = (o, x0, x1, y0, y1, z0, z1) => { const P = [[x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0],[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]];
+    [[0,2,1],[0,3,2],[4,5,6],[4,6,7],[0,1,5],[0,5,4],[1,2,6],[1,6,5],[2,3,7],[2,7,6],[3,0,4],[3,4,7]].forEach(f => o.push(f.map(i => P[i]))); };
+  const z0 = mask ? INK : 0, shells = [[]];
+  prism(tp.pts, PLATE - z0, q => [q[0], q[1], q[2] + z0], shells[0]);
+  tp.spans.forEach(([a, b]) => { const o = []; prism([[a, D], [b, D], [b, D + LIP], [a, D + LIP]], PLATE + HOOK - z0, q => [q[0], q[1], q[2] + z0], o); shells.push(o); });
+  shells.forEach(o => o.forEach(t => white.push(t)));
+  let stray = 0, inkPx = 0;
+  if (mask) {
+    const K = mask.K, w = mask.w, TOP = Math.round(LIP*K), H = mask.h + TOP;
+    const ink = new Uint8Array(w*H), bed = new Uint8Array(w*H);
+    // rows scanned against the outline: crossings of each edge give the inside runs of that row
+    const runsAt = y => { const xs = []; const P = tp.pts;
+      for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j];
+        if ((yi > y) !== (yj > y)) xs.push(xi + (y - yi)*(xj - xi)/(yj - yi)); }
+      return xs.sort((a, b) => a - b); };
+    for (let r = 0; r < H; r++) {
+      const y = D + LIP - (r + 0.5)/K, inLip = r < TOP, xs = inLip ? null : runsAt(y);
+      for (let px = 0; px < w; px++) {
+        const x = W - (px + 0.5)/K;
+        let face;
+        if (inLip) face = tp.spans.some(([a, b]) => x > a && x < b);
+        else { let k = 0; while (k < xs.length && xs[k] < x) k++; face = k % 2 === 1; }
+        // the line would leave a thin sliver along the V notch's side: it starts at the notch point
+        const trimmed = tp.notch && y > D - VD && x > tp.notch.mouth[0] - 1.5 && x < tp.notch.mouth[1] + 1.5;
+        const isInk = !inLip && mask.ink[(r - TOP)*w + px] && !trimmed;
+        const i = r*w + px;
+        if (isInk && !face) { stray++; continue; }
+        if (isInk) { ink[i] = 1; inkPx++; } else if (face) bed[i] = 1;
+      }
+    }
+    const boxes = (m, o) => { const open = new Map();
+      const flush = q => box(o, Math.max(0, W - q.x1/K), W - q.x0/K, D + LIP - q.y1/K, D + LIP - q.y0/K, 0, INK);
+      for (let y = 0; y <= H; y++) { const runs = new Map();
+        if (y < H) { let x = 0; while (x < w) { if (m[y*w + x]) { const a = x; while (x < w && m[y*w + x]) x++; runs.set(a + ':' + x, [a, x]); } else x++; } }
+        for (const [k, q] of open) if (!runs.has(k)) { flush(q); open.delete(k); }
+        for (const [k, [a, b]] of runs) { if (open.has(k)) open.get(k).y1 = y + 1; else open.set(k, {x0:a, x1:b, y0:y, y1:y + 1}); } } };
+    boxes(bed, white); boxes(ink, black);
+    inkPx /= K*K; stray /= K*K;
+  }
+  return {white, black, shells, size:[W, D + LIP, PLATE + HOOK], inkMm2:inkPx, strayMm2:stray};
 }
 /* ---------- inputs ---------- */
 function buildRail(){
@@ -1754,6 +1941,123 @@ function downloadStl(){
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
+/* ---------- rafter marking templates: letters, preview, downloads ---------- */
+const TFONT = '"Barlow Condensed", "Arial Narrow", Arial, sans-serif';
+// draw one template as seen from the bed face (as it sits on the rafter): mode 'mask' gives letters only (black on
+// white, one pixel per 1/K mm, rows from the top edge down), mode 'preview' the whole face with plate and lip
+function drawTemplate(tp, K, mode){
+  const W = tp.W, D = tp.D, LIP = TPL.LIP, pad = mode === 'preview' ? 3*K : 0;
+  const cv = document.createElement('canvas');
+  cv.width = Math.ceil(W*K) + 2*pad; cv.height = Math.round((mode === 'preview' ? D + LIP : D)*K) + 2*pad;
+  const g2 = cv.getContext('2d');
+  const top = mode === 'preview' ? LIP : 0;
+  const P = (x, v) => [pad + (W - x)*K, pad + (top - v)*K];        // template coords (x, v) to the view seen from the bed face
+  if (mode === 'preview') {
+    g2.fillStyle = '#c4c8c1'; tp.spans.forEach(([a, b]) => { const p0 = P(b, LIP), p1 = P(a, 0); g2.fillRect(p0[0], p0[1], p1[0] - p0[0], p1[1] - p0[1]); });
+    g2.fillStyle = '#ffffff'; g2.strokeStyle = '#6b716c'; g2.lineWidth = Math.max(1, K/4);
+    g2.beginPath(); tp.pts.forEach((q, i) => (i ? g2.lineTo : g2.moveTo).call(g2, ...P(q[0], q[1] - D))); g2.closePath(); g2.fill(); g2.stroke();
+  } else { g2.fillStyle = '#fff'; g2.fillRect(0, 0, cv.width, cv.height); }
+  g2.fillStyle = '#111'; g2.strokeStyle = '#111';
+  const line = (a, b, wmm) => { g2.lineWidth = wmm*K; g2.lineCap = 'round'; g2.beginPath(); g2.moveTo(...P(...a)); g2.lineTo(...P(...b)); g2.stroke(); };
+  const dashed = (a, b, wmm) => { g2.setLineDash([2.4*K, 1.6*K]); line(a, b, wmm); g2.setLineDash([]); };
+  const text = (t, x, v, size) => { g2.font = '800 ' + size*K + 'px ' + TFONT; g2.textAlign = 'center'; g2.textBaseline = 'middle'; g2.fillText(t, ...P(x, v)); };
+  // round corner arrow at V from direction a1 to a2 (template angles), the short way round, tips 2.2 mm off the lines
+  const arc = (V, a1, a2, rmm, label, lr, at) => {
+    // seen from the bed face x is mirrored, so an angle a shows as pi - a
+    a1 = Math.PI - a1; a2 = Math.PI - a2;
+    const [cx, cy] = P(...V), r = rmm*K;
+    let d = a2 - a1; while (d > Math.PI) d -= 2*Math.PI; while (d <= -Math.PI) d += 2*Math.PI;
+    const sd = Math.sign(d), gap = 2.2/rmm, A1 = -(a1 + sd*gap), A2 = -(a1 + d - sd*gap);
+    const sg = Math.sign(A2 - A1), L = 4*K, Wd = 2.2*K, back = L/r, at2 = (a, rr) => [cx + rr*Math.cos(a), cy + rr*Math.sin(a)];
+    g2.lineWidth = 1.4*K; g2.lineCap = 'butt';
+    g2.beginPath(); g2.arc(cx, cy, r, A1 + sg*back*0.9, A2 - sg*back*0.9, A2 < A1); g2.stroke();
+    g2.lineJoin = 'round'; g2.lineWidth = 0.5*K;
+    [[A1, sg], [A2, -sg]].forEach(([a, inward]) => {
+      // straight, even head: its axis is the chord from the base centre (on the arc) to the tip
+      const tip = at2(a, r), bc = at2(a + inward*back, r), l = Math.hypot(tip[0] - bc[0], tip[1] - bc[1]), ax = (tip[0] - bc[0])/l, ay = (tip[1] - bc[1])/l;
+      const base = [tip[0] - ax*L, tip[1] - ay*L];
+      g2.beginPath(); g2.moveTo(...tip); g2.lineTo(base[0] - ay*Wd, base[1] + ax*Wd); g2.lineTo(base[0] + ay*Wd, base[1] - ax*Wd); g2.closePath(); g2.fill(); g2.stroke();
+    });
+    g2.lineJoin = 'miter';
+    const mid = (A1 + A2)/2, R = (rmm + (lr || 6))*K;
+    g2.font = '800 ' + 6.3*K + 'px ' + TFONT; g2.textAlign = 'center'; g2.textBaseline = 'middle';
+    if (at) g2.fillText(label, ...P(V[0] + at[0], V[1] + at[1])); else g2.fillText(label, cx + R*Math.cos(mid), cy + R*Math.sin(mid));
+  };
+  templateLabels(tp, G, PP, {line, dashed, text, arc});
+  return cv;
+}
+function templateMask(tp){
+  const K = 20, cv = drawTemplate(tp, K, 'mask'), w = cv.width, h = cv.height;
+  const img = cv.getContext('2d').getImageData(0, 0, w, h).data, ink = new Uint8Array(w*h);
+  for (let i = 0; i < w*h; i++) ink[i] = img[i*4] < 128 ? 1 : 0;
+  return {w, h, K, ink};
+}
+// a stored (uncompressed) zip, enough for a 3MF package
+function crc32(u8){ let c, t = crc32.t; if (!t) { t = crc32.t = new Uint32Array(256); for (let n = 0; n < 256; n++) { c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } }
+  c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = t[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function zipStore(files){
+  const enc = new TextEncoder(), parts = [], cen = []; let off = 0;
+  files.forEach(({name, data}) => {
+    const nb = enc.encode(name), crc = crc32(data), h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, nb.length, true);
+    parts.push(new Uint8Array(h.buffer), nb, data);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, nb.length, true); c.setUint32(42, off, true);
+    cen.push(new Uint8Array(c.buffer), nb); off += 30 + nb.length + data.length;
+  });
+  const size = cen.reduce((s, a) => s + a.length, 0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, size, true); e.setUint32(16, off, true);
+  return new Blob(parts.concat(cen, [new Uint8Array(e.buffer)]), {type:'model/3mf'});
+}
+function threeMF(title, white, black){
+  const mesh = (tris, id, name, pi) => { const idx = new Map(), v = [], f = [];
+    tris.forEach(t => { const k = t.map(q => { const key = q.map(x => x.toFixed(3)).join(','); if (!idx.has(key)) { idx.set(key, v.length); v.push(key); } return idx.get(key); });
+      if (k[0] !== k[1] && k[1] !== k[2] && k[0] !== k[2]) f.push(k); });
+    return '<object id="'+id+'" name="'+name+'" type="model" pid="1" pindex="'+pi+'"><mesh><vertices>' + v.map(s => { const [x, y, z] = s.split(','); return '<vertex x="'+x+'" y="'+y+'" z="'+z+'"/>'; }).join('') +
+      '</vertices><triangles>' + f.map(k => '<triangle v1="'+k[0]+'" v2="'+k[1]+'" v3="'+k[2]+'"/>').join('') + '</triangles></mesh></object>'; };
+  const model = '<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><metadata name="Title">'+title+'</metadata><resources>' +
+    '<basematerials id="1"><base name="White" displaycolor="#F2F2F2FF"/><base name="Black" displaycolor="#141414FF"/></basematerials>' + mesh(white, 2, 'template (white)', 0) + mesh(black, 3, 'letters (black)', 1) +
+    '<object id="4" name="'+title+'" type="model"><components><component objectid="2"/><component objectid="3"/></components></object></resources><build><item objectid="4"/></build></model>';
+  const enc = new TextEncoder();
+  return zipStore([
+    {name:'[Content_Types].xml', data:enc.encode('<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>')},
+    {name:'_rels/.rels', data:enc.encode('<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>')},
+    {name:'3D/3dmodel.model', data:enc.encode(model)}]);
+}
+const TNAME = {ridge:'ridge-end', bird:'birdsmouth'};
+function templateInfo(){
+  if (!G) return;
+  const T = templates(G, PP), bed = Math.max(60, parseFloat($('pBed').value) || 220), which = $('tWhich').value;
+  const box = $('tPrev'); box.innerHTML = '';
+  const shown = which === 'both' ? ['ridge', 'bird'] : [which];
+  shown.forEach(k => { const cv = drawTemplate(T[k], 4, 'preview'); cv.setAttribute('aria-label', TNAME[k] + ' template, seen as it sits on the rafter'); box.appendChild(cv); });
+  const sz = k => Math.round(T[k].W) + ' × ' + Math.round(T[k].D + TPL.LIP) + ' × ' + (TPL.PLATE + TPL.HOOK);
+  const big = shown.filter(k => Math.max(T[k].W, T[k].D + TPL.LIP) > bed);
+  $('tInfo').innerHTML = shown.map(k => '<b>' + (k === 'ridge' ? 'Ridge end' : 'Birdsmouth') + '</b> ' + sz(k) + ' mm').join(', ') + '. ' +
+    (big.length ? '<b>Larger than your ' + Math.round(bed) + ' mm bed.</b> ' : '') +
+    'Real size, for the rafter set above. Seen from the lettered face, as it sits on the rafter: ridge end to the right. Labels are in mm.';
+}
+async function downloadTemplate(){
+  if (!G) return;
+  const btn = $('tGo'), was = btn.textContent; btn.disabled = true; btn.textContent = 'Making…';
+  try {
+    await document.fonts.load('800 40px "Barlow Condensed"');
+    await new Promise(r => setTimeout(r, 30));
+    const T = templates(G, PP), which = $('tWhich').value, fmt = $('tFmt').value, keys = which === 'both' ? ['ridge', 'bird'] : [which];
+    const notes = [];
+    for (const k of keys) {
+      const s = templateSolids(T[k], templateMask(T[k])), name = 'rafter-template-' + TNAME[k] + '-pitch' + f1(PP.pitch) + '-' + Math.round(PP.rt) + 'x' + Math.round(PP.rd);
+      if (s.strayMm2 > 0.5) notes.push((k === 'ridge' ? 'Ridge end' : 'Birdsmouth') + ': part of a label fell off the plate (' + f1(s.strayMm2) + ' mm²) and was left out.');
+      const blob = fmt === '3mf' ? threeMF('Rafter template ' + TNAME[k], s.white, s.black) : new Blob([stlBinary(s.white, name)], {type:'model/stl'});
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name + (fmt === '3mf' ? '.3mf' : '-engraved.stl');
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+      await new Promise(r => setTimeout(r, 400));
+    }
+    templateInfo();
+    if (notes.length) $('tInfo').innerHTML += ' <b>' + notes.join(' ') + '</b>';
+  } finally { btn.disabled = false; btn.textContent = was; }
+}
+
 /* ---------- A4 PDF blueprint ---------- */
 // drawings carry class names only, so the PDF gets its own fixed light colours
 const PRINT_CSS = '<style>.wood{fill:#e3ebfb;stroke:#1c2320;stroke-width:1.4}.ground{fill:#d5dad4}.dim{stroke:#59635e;stroke-width:1}'+
@@ -1954,6 +2258,7 @@ function update(){
   G = g; PP = p;
   render(g,p);
   printInfo();
+  templateInfo();
   clearTimeout(t3); t3 = setTimeout(() => { build3d(g,p); if (annoKey) showAnno(annoKey, false); else if (selected) select(selected); }, 40);
 }
 function resetAll(){ P = Object.assign({}, DEF); save(); buildRail(); firstFrame = true; update(); }
@@ -1974,6 +2279,8 @@ $('tBraces').addEventListener('click', () => toggleGroup('braces'));
 $('bpClose').addEventListener('click', () => { bpHidden = true; renderBlue(); renderPick(); });
 $('bpMore').addEventListener('click', () => { bpFull = !bpFull; renderBlue(); $('blueprint').scrollTop = 0; });
 $('pGo').addEventListener('click', downloadStl);
+$('tGo').addEventListener('click', downloadTemplate);
+$('tWhich').addEventListener('input', templateInfo);
 $('pdfBtn').addEventListener('click', async e => {
   const b = e.currentTarget; if (b.disabled) return;
   b.disabled = true; b.textContent = 'Making PDF…';

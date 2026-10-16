@@ -434,3 +434,52 @@ test('joint close-up labels the block, tongue and U-cut sizes', () => {
     [p.jc, p.b - p.jc, p.jz, p.b - p.jz].forEach(v => assert.ok(nums.includes(Math.round(v)), `close-up shows ${v}`));
   }
 });
+
+// marking templates: measured on the outline the code makes, against plain trigonometry on the rafter
+test('marking templates match the rafter cuts, for other pitches and depths too', () => {
+  const angTo = (A, B) => { const a = Math.abs(deg(Math.atan2(B[1] - A[1], B[0] - A[0]))); return Math.min(a, 180 - a); };
+  const at = (pts, q) => pts.some(v => dist(v, q) < 1e-6);
+  const inside = (pt, poly) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi) c = !c; } return c; };
+  for (const over of [{}, { pitch: 30 }, { pitch: 45 }, { rd: 150, hb: 60 }, { ridgeNotch: false }, { pitch: 22.5, rd: 100, hb: 35 }]) {
+    const { p, g } = setup(over), T = R.templates(g, p), D = p.rd, a = p.pitch * Math.PI / 180;
+    for (const k of ['ridge', 'bird']) {
+      const tp = T[k], s = R.templateSolids(tp);
+      s.shells.forEach((o, i) => assert.equal(closedSolid(o), 0, `${k} ${i ? 'lip' : 'plate'} is closed (${JSON.stringify(over)})`));
+      assert.ok(s.shells.every(o => volume(o) > 0), `${k} solids point outwards`);
+      near(Math.max(...tp.pts.map(q => q[1])), D, `${k} top edge at the rafter depth`);
+      near(Math.min(...tp.pts.map(q => q[1])), 0, `${k} bottom edge`);
+    }
+    // birdsmouth: the cut corner and its two ends are outline corners; heel plumb, seat level once the rafter is pitched
+    const B = T.bird, f = B.f, C = [f.corner[0], f.corner[1] + D], H = [f.heelEnd[0], f.heelEnd[1] + D], Sx = [f.seatEnd[0], f.seatEnd[1] + D];
+    assert.ok(at(B.pts, C) && at(B.pts, H) && at(B.pts, Sx), 'birdsmouth corner, heel and seat ends are on the outline');
+    near(dist(C, H), p.hb, 'heel length', 1e-6); near(angTo(C, H), 90 - p.pitch, 'heel to the top edge', 1e-6); near(angTo(C, Sx), p.pitch, 'seat to the top edge', 1e-6);
+    near(H[1], 0, 'heel reaches the bottom edge', 1e-6);
+    // the mark: along the top edge from the long point, the plumb line through the outside face of the eaves beam
+    near(f.top[0], B.notch.mark, 'V notch mouth corner on the mark');
+    near(g.heel, (p.W / 2 + p.b) / Math.cos(a), 'mark from the long point', 1e-6);
+    // V notch: an even V, its point on the plumb line (through the mark, parallel to the heel)
+    const [m0, m1] = B.notch.mouth, ap = B.notch.apex;
+    near(dist([m0, D], ap), dist([m1, D], ap), 'V sides equal', 1e-9);
+    const hx = H[0] - C[0], hy = H[1] - C[1];
+    near(Math.abs(hx * (ap[1] - C[1]) - hy * (ap[0] - C[0])) / Math.hypot(hx, hy), 0, 'V point on the plumb line', 1e-9);
+    assert.deepEqual(B.spans.map(s => s.map(x => +x.toFixed(6))), [[0, +m0.toFixed(6)], [+m1.toFixed(6), +B.W.toFixed(6)]], 'lip gap is the V mouth');
+    // ridge end: the cut is plumb (90 - pitch to the top edge); the notch, when there is one, as the rafter drawing
+    const Rt = T.ridge;
+    near(angTo([0, D], [Rt.f.cutBot[0], 0]), 90 - p.pitch, 'ridge cut to the top edge', 1e-6);
+    if (p.hr > 0) { const rc = [Rt.f.corner[0], Rt.f.corner[1] + D]; assert.ok(at(Rt.pts, rc), 'ridge notch corner on the outline'); near(dist(rc, [Rt.f.heelEnd[0], Rt.f.heelEnd[1] + D]), p.hr, 'ridge heel'); }
+    else assert.equal(Rt.f.corner, undefined, 'no ridge notch drawn');
+    // labels: every word and mark lands on the plate (a rough box for each word, condensed bold capitals)
+    for (const k of ['ridge', 'bird']) {
+      const tp = T[k], inPlate = (x, v) => inside([x, v + D], tp.pts), off = [];
+      const pt = (q, what) => { if (!inPlate(q[0], q[1])) off.push(what); };
+      R.templateLabels(tp, g, p, {
+        line: (A, Bq) => { pt([A[0] + (Bq[0] - A[0]) * 0.02, A[1] + (Bq[1] - A[1]) * 0.02 - 0.3], 'line'); pt([Bq[0] - (Bq[0] - A[0]) * 0.02, Bq[1] - (Bq[1] - A[1]) * 0.02 + 0.3], 'line'); },
+        dashed: () => {}, arc: (V, a1, a2, r) => pt([V[0] + r * Math.cos((a1 + a2) / 2), V[1] + r * Math.sin((a1 + a2) / 2)], 'arc'),
+        text: (t, x, v, size) => { const hw = t.length * size * 0.27, hh = size * 0.36; [[-hw, -hh], [hw, -hh], [-hw, hh], [hw, hh]].forEach(([dx, dv]) => pt([x + dx, v + dv], t)); },
+      });
+      assert.deepEqual([...new Set(off)], [], `${k} labels on the plate (${JSON.stringify(over)})`);
+    }
+  }
+});
